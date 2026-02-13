@@ -1,3 +1,4 @@
+import 'subject_details_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -73,7 +74,19 @@ class StudentHomeScreen extends StatelessWidget {
                           subtitle: Text(
                               "Roll Range: ${doc['startRoll']} - ${doc['endRoll']}"),
                           onTap: () {
-                            // later → open attendance screen
+                            Navigator.push(
+  context,
+  MaterialPageRoute(
+    builder: (_) => SubjectDetailsScreen(
+      universityId: universityId,
+      departmentId: departmentId,
+      subjectId: doc.id,
+      role: "Student",
+      userRoll: int.parse(roll), // 👈 PASS HERE
+    ),
+  ),
+);
+
                           },
                         ),
                       );

@@ -1,3 +1,4 @@
+import 'package:attendance_app/screens/subject_details_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -89,6 +90,20 @@ class CRHomeScreen extends StatelessWidget {
                           title: Text(doc['name']),
                           subtitle: Text(
                               "Roll Range: ${doc['startRoll']} - ${doc['endRoll']}"),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => SubjectDetailsScreen(
+                                  universityId: universityId,
+                                  departmentId: departmentId,
+                                  subjectId: doc.id,
+                                  role: "CR",
+                                  userRoll: int.parse(roll),
+                                ),
+                              ),
+                            );
+                          },
                           trailing: ElevatedButton(
                             child: const Text("Start Attendance"),
                             onPressed: () async {
