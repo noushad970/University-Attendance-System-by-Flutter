@@ -1,5 +1,7 @@
 import 'package:geolocator/geolocator.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:io';
 import 'dart:math';
 
 class AttendanceRecord {
@@ -46,15 +48,21 @@ class FraudDetectionService {
   /// Get device MAC address
   static Future<String> getDeviceMacAddress() async {
     try {
-      if (identical(0, -0.0)) {
-        // iOS
+      if (kIsWeb) {
+        return 'WEB_DEVICE';
+      }
+
+      if (Platform.isIOS) {
         final iosInfo = await _deviceInfo.iosInfo;
         return iosInfo.identifierForVendor ?? 'UNKNOWN_MAC';
-      } else {
-        // Android
+      }
+
+      if (Platform.isAndroid) {
         final androidInfo = await _deviceInfo.androidInfo;
         return androidInfo.id ?? 'UNKNOWN_MAC';
       }
+
+      return 'UNKNOWN_PLATFORM';
     } catch (e) {
       return 'ERROR_MAC_${DateTime.now().millisecondsSinceEpoch}';
     }

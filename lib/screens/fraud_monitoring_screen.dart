@@ -37,6 +37,8 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
 
   Future<void> _loadFraudDetection() async {
     try {
+      print('Loading fraud detection for session: ${widget.sessionId}');
+      
       final sessionDoc = await FirebaseFirestore.instance
           .collection('universities')
           .doc(widget.universityId)
@@ -50,38 +52,111 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
           .doc(widget.sessionId)
           .get();
 
+      print('Session doc exists: ${sessionDoc.exists}');
+      print('Session data: ${sessionDoc.data()}');
+
       final locationData = sessionDoc['locationData'] ?? {};
       final attendanceData = sessionDoc['attendance'] ?? {};
 
+      print('Location data keys: ${locationData.keys}');
+      print('Attendance data keys: ${attendanceData.keys}');
+
       // Store all location data for later access
-      final allLocationData = <int, Map<String, dynamic>>{};
+      this.allLocationData = <int, Map<String, dynamic>>{};
 
       final records = <AttendanceRecord>[];
+      final macMap = <String, List<int>>{};
 
       for (final roll in attendanceData.keys) {
         final isPresent = attendanceData[roll] ?? false;
-        if (isPresent && locationData.containsKey(roll)) {
+        if (!isPresent) continue;
+
+        if (locationData.containsKey(roll)) {
           final locData = locationData[roll];
-          allLocationData[int.parse(roll)] = locData;
-          records.add(AttendanceRecord(
-            roll: int.parse(roll),
-            latitude: locData['latitude'] ?? 0,
-            longitude: locData['longitude'] ?? 0,
-            macAddress: locData['macAddress'] ?? 'UNKNOWN',
-            timestamp: locData['timestamp']?.toDate() ?? DateTime.now(),
-          ));
+          if (locData is Map) {
+            this.allLocationData[int.parse(roll)] = Map<String, dynamic>.from(locData);
+
+            final mac = locData['macAddress'];
+            if (mac is String && mac.isNotEmpty) {
+              macMap.putIfAbsent(mac, () => []).add(int.parse(roll));
+            }
+
+            final lat = locData['latitude'];
+            final lon = locData['longitude'];
+            if (lat is num && lon is num) {
+              records.add(AttendanceRecord(
+                roll: int.parse(roll),
+                latitude: lat.toDouble(),
+                longitude: lon.toDouble(),
+                macAddress: mac is String && mac.isNotEmpty ? mac : 'UNKNOWN',
+                timestamp: locData['timestamp']?.toDate() ?? DateTime.now(),
+              ));
+            }
+          }
         }
       }
 
+      print('Records collected: ${records.length}');
+
+      final duplicateMacs = <int>[];
+      for (final rolls in macMap.values) {
+        if (rolls.length > 1) {
+          duplicateMacs.addAll(rolls);
+        }
+      }
+
+      CheatDetectionResult? result;
+
       if (records.isNotEmpty) {
-        final result = FraudDetectionService.detectCheating(records);
+        final baseResult = FraudDetectionService.detectCheating(records);
+        result = CheatDetectionResult(
+          duplicateMacRolls: <int>{
+            ...baseResult.duplicateMacRolls,
+            ...duplicateMacs,
+          }.toList(),
+          outlierLocationRolls: baseResult.outlierLocationRolls,
+          locationStats: baseResult.locationStats,
+        );
+        print('Cheat detection result: MAC cheaters=${result.duplicateMacRolls}, Location outliers=${result.outlierLocationRolls}');
+      } else {
+        // Create empty result if no records
+        result = CheatDetectionResult(
+          duplicateMacRolls: duplicateMacs,
+          outlierLocationRolls: [],
+          locationStats: {
+            'centerLatitude': 0.0,
+            'centerLongitude': 0.0,
+            'meanDistance': 0.0,
+            'stdDeviation': 0.0,
+            'allDistances': <int, double>{},
+          },
+        );
+        print('No location records found, using empty result');
+      }
+
+      if (mounted) {
         setState(() {
           detectionResult = result;
-          this.allLocationData = allLocationData;
         });
       }
     } catch (e) {
       print('Error loading fraud detection: $e');
+      // Set empty result to prevent infinite loading
+      if (mounted) {
+        setState(() {
+          detectionResult = CheatDetectionResult(
+            duplicateMacRolls: [],
+            outlierLocationRolls: [],
+            locationStats: {
+              'centerLatitude': 0.0,
+              'centerLongitude': 0.0,
+              'meanDistance': 0.0,
+              'stdDeviation': 0.0,
+              'allDistances': <int, double>{},
+            },
+          );
+        });
+      }
     }
   }
 
@@ -179,7 +254,16 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
         elevation: 0,
       ),
       body: detectionResult == null
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text("Loading fraud detection data..."),
+                ],
+              ),
+            )
           : DefaultTabController(
               length: 3,
               child: Column(
@@ -243,14 +327,31 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
   }
 
   Widget _buildMapTab() {
-    if (detectionResult?.locationStats['centerLatitude'] == null) {
+    final validLocations = <int, LatLng>{};
+    for (final entry in allLocationData.entries) {
+      final locData = entry.value;
+      final lat = locData['latitude'];
+      final lon = locData['longitude'];
+      if (lat is num && lon is num) {
+        validLocations[entry.key] = LatLng(lat.toDouble(), lon.toDouble());
+      }
+    }
+
+    if (validLocations.isEmpty) {
       return const Center(child: Text("No location data available"));
     }
 
-    final centerLat = detectionResult!.locationStats['centerLatitude'] as double;
-    final centerLon = detectionResult!.locationStats['centerLongitude'] as double;
     final allDistances =
-        detectionResult!.locationStats['allDistances'] as Map<int, double>;
+        detectionResult?.locationStats['allDistances'] as Map<int, double>? ?? {};
+
+    double centerLat = 0;
+    double centerLon = 0;
+    for (final coord in validLocations.values) {
+      centerLat += coord.latitude;
+      centerLon += coord.longitude;
+    }
+    centerLat /= validLocations.length;
+    centerLon /= validLocations.length;
 
     final markers = <Marker>{};
 
@@ -265,18 +366,20 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
     );
 
     // Add student markers
-    allDistances.forEach((roll, distance) {
-      final isCheater = detectionResult!.outlierLocationRolls.contains(roll);
+    validLocations.forEach((roll, position) {
+      final isCheater = detectionResult?.outlierLocationRolls.contains(roll) ?? false;
+      final distance = allDistances[roll];
+      final snippet = distance == null
+          ? 'Location received'
+          : '${distance.toStringAsFixed(2)}m away';
+
       markers.add(
         Marker(
           markerId: MarkerId('student_$roll'),
-          position: LatLng(
-            centerLat + (distance / 111000) * (roll % 2 == 0 ? 1 : -1),
-            centerLon + (distance / 111000) * (roll % 3 == 0 ? 1 : -1),
-          ),
+          position: position,
           infoWindow: InfoWindow(
             title: 'Student ID: $roll',
-            snippet: '${distance.toStringAsFixed(2)}m away',
+            snippet: snippet,
           ),
           icon: BitmapDescriptor.defaultMarkerWithHue(
             isCheater ? BitmapDescriptor.hueRed : BitmapDescriptor.hueBlue,
@@ -427,7 +530,9 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
           ],
           rows: sortedRolls.map((roll) {
             final locData = allLocationData[roll];
-            final distance = detectionResult?.locationStats['allDistances'][roll] ?? 0.0;
+            final distance = detectionResult?.locationStats['allDistances'][roll];
+            final latValue = locData?['latitude'];
+            final lonValue = locData?['longitude'];
             final isDuplicateMAC = detectionResult?.duplicateMacRolls.contains(roll) ?? false;
             final isOutlier = detectionResult?.outlierLocationRolls.contains(roll) ?? false;
 
@@ -453,9 +558,9 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
                     style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
                   ),
                 )),
-                DataCell(Text((locData?['latitude'] ?? 0).toStringAsFixed(6))),
-                DataCell(Text((locData?['longitude'] ?? 0).toStringAsFixed(6))),
-                DataCell(Text('${distance.toStringAsFixed(2)}m')),
+                DataCell(Text(latValue is num ? latValue.toDouble().toStringAsFixed(6) : '-')),
+                DataCell(Text(lonValue is num ? lonValue.toDouble().toStringAsFixed(6) : '-')),
+                DataCell(Text(distance is num ? '${distance.toStringAsFixed(2)}m' : '-')),
                 DataCell(Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
