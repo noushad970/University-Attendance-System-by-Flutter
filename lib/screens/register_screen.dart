@@ -9,12 +9,15 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
+
   final rollController = TextEditingController();
   final passwordController = TextEditingController();
   final adminPasswordController = TextEditingController();
 
   String? selectedUniversityId;
   String? selectedDepartmentId;
+  String? selectedBatchId;
+
   String selectedRole = "Student";
 
   bool isLoading = false;
@@ -23,6 +26,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// REGISTER FUNCTION
   /// ==============================
   Future<void> registerUser() async {
+
     if (rollController.text.isEmpty ||
         passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -31,12 +35,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    /// If NOT admin → university & department required
+    /// For Student & CR → must select university, department & batch
     if (selectedRole != "Admin") {
       if (selectedUniversityId == null ||
+          selectedBatchId == null ||
           selectedDepartmentId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Select University & Department")),
+          const SnackBar(content: Text("Select University, Batch & Department")),
         );
         return;
       }
@@ -45,6 +50,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => isLoading = true);
 
     try {
+
       /// 🔐 ADMIN PASSWORD CHECK
       if (selectedRole == "Admin") {
         final configDoc = await FirebaseFirestore.instance
@@ -63,18 +69,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
         }
       }
 
+      /// 🔎 Check if user already exists
+      final existingUser = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(rollController.text.trim())
+          .get();
+
+      if (existingUser.exists) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("User already exists")),
+        );
+        setState(() => isLoading = false);
+        return;
+      }
+
       /// 🧑 SAVE USER
       await FirebaseFirestore.instance
           .collection('users')
           .doc(rollController.text.trim())
           .set({
-        'roll': rollController.text.trim(),
+        'roll': int.parse(rollController.text.trim()),
         'password': passwordController.text.trim(),
         'role': selectedRole,
         'universityId':
             selectedRole == "Admin" ? null : selectedUniversityId,
         'departmentId':
             selectedRole == "Admin" ? null : selectedDepartmentId,
+        'batch':
+            selectedRole == "Admin" ? null : selectedBatchId,
         'createdAt': Timestamp.now(),
       });
 
@@ -83,6 +105,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       Navigator.pop(context);
+
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Error: $e")),
@@ -97,10 +120,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// ==============================
   @override
   Widget build(BuildContext context) {
+
     return Scaffold(
       appBar: AppBar(title: const Text("Register")),
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
+
         child: Column(
           children: [
 
@@ -117,6 +143,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   selectedRole = value!;
                   selectedUniversityId = null;
                   selectedDepartmentId = null;
+                  selectedBatchId = null;
                 });
               },
               decoration: const InputDecoration(labelText: "Select Role"),
@@ -124,7 +151,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
             const SizedBox(height: 20),
 
-            /// UNIVERSITY (ONLY IF NOT ADMIN)
+            /// UNIVERSITY (Only if not Admin)
             if (selectedRole != "Admin")
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
@@ -133,12 +160,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) return Container();
 
-                  return DropdownButtonFormField<String>(
+                  return DropdownButtonFormField<String?>(
                     value: selectedUniversityId,
                     hint: const Text("Select University"),
                     isExpanded: true,
                     items: snapshot.data!.docs.map((doc) {
-                      return DropdownMenuItem(
+                      return DropdownMenuItem<String?>(
                         value: doc.id,
                         child: Text(doc['name']),
                       );
@@ -146,6 +173,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     onChanged: (value) {
                       setState(() {
                         selectedUniversityId = value;
+                        selectedBatchId = null;
                         selectedDepartmentId = null;
                       });
                     },
@@ -155,23 +183,60 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
             const SizedBox(height: 20),
 
-            /// DEPARTMENT (ONLY IF NOT ADMIN)
+            /// BATCH
             if (selectedRole != "Admin" && selectedUniversityId != null)
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('universities')
                     .doc(selectedUniversityId)
+                    .collection('batches')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) return Container();
+
+                  return DropdownButtonFormField<String?>(
+                    value: selectedBatchId,
+                    hint: const Text("Select Batch"),
+                    isExpanded: true,
+                    items: snapshot.data!.docs.map((doc) {
+                      return DropdownMenuItem<String?>(
+                        value: doc.id,
+                        child: Text(doc['name']),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        selectedBatchId = value;
+                        selectedDepartmentId = null;
+                      });
+                    },
+                  );
+                },
+              ),
+
+            const SizedBox(height: 20),
+
+            /// DEPARTMENT
+            if (selectedRole != "Admin" && 
+                selectedUniversityId != null &&
+                selectedBatchId != null)
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('universities')
+                    .doc(selectedUniversityId)
+                    .collection('batches')
+                    .doc(selectedBatchId)
                     .collection('departments')
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) return Container();
 
-                  return DropdownButtonFormField<String>(
+                  return DropdownButtonFormField<String?>(
                     value: selectedDepartmentId,
                     hint: const Text("Select Department"),
                     isExpanded: true,
                     items: snapshot.data!.docs.map((doc) {
-                      return DropdownMenuItem(
+                      return DropdownMenuItem<String?>(
                         value: doc.id,
                         child: Text(doc['name']),
                       );

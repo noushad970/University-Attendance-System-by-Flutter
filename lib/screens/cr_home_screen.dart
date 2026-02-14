@@ -1,131 +1,117 @@
-import 'package:attendance_app/screens/subject_details_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'subject_details_screen.dart';
 
 class CRHomeScreen extends StatelessWidget {
-  final String roll;
   final String universityId;
   final String departmentId;
+  final String batch;
+  final int roll;
 
   const CRHomeScreen({
     super.key,
-    required this.roll,
     required this.universityId,
     required this.departmentId,
+    required this.batch,
+    required this.roll,
   });
 
-  /// ==============================
-  /// CREATE ATTENDANCE SESSION
-  /// ==============================
-  Future<void> createAttendance(
-      String subjectId) async {
+  Future<bool> isBatchCR() async {
+    final batchDoc = await FirebaseFirestore.instance
+        .collection('universities')
+        .doc(universityId)
+        .collection('batches')
+        .doc(batch)
+        .get();
 
-    await FirebaseFirestore.instance
-        .collection('attendance_sessions')
-        .add({
-      'subjectId': subjectId,
-      'universityId': universityId,
-      'departmentId': departmentId,
-      'createdBy': roll,
-      'createdAt': Timestamp.now(),
-      'isOpen': true,
-    });
+    int crRoll = batchDoc['crRoll'];
+    return crRoll == roll;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("CR Dashboard"),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
+      appBar: AppBar(title: const Text("Batch Dashboard")),
 
-            Text(
-              "CR: $roll",
-              style: const TextStyle(
-                  fontSize: 18, fontWeight: FontWeight.bold),
-            ),
+      body: FutureBuilder<bool>(
+        future: isBatchCR(),
+        builder: (context, crSnapshot) {
 
-            const SizedBox(height: 20),
+          if (!crSnapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                "Manage Subjects",
-                style: TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
+          bool isCR = crSnapshot.data!;
 
-            const SizedBox(height: 10),
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('universities')
+                .doc(universityId)
+                .collection('batches')
+                .doc(batch)
+                .collection('departments')
+                .doc(departmentId)
+                .collection('subjects')
+                .orderBy('createdAt')
+                .snapshots(),
+            builder: (context, snapshot) {
 
-            /// Load Subjects
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('universities')
-                    .doc(universityId)
-                    .collection('departments')
-                    .doc(departmentId)
-                    .collection('subjects')
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(
-                        child: CircularProgressIndicator());
-                  }
+              if (!snapshot.hasData) {
+                return const Center(
+                    child: CircularProgressIndicator());
+              }
 
-                  if (snapshot.data!.docs.isEmpty) {
-                    return const Center(
-                        child: Text("No subjects available"));
-                  }
+              final subjects = snapshot.data!.docs;
 
-                  return ListView(
-                    children: snapshot.data!.docs.map((doc) {
-                      return Card(
-                        child: ListTile(
-                          title: Text(doc['name']),
-                          subtitle: Text(
-                              "Roll Range: ${doc['startRoll']} - ${doc['endRoll']}"),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => SubjectDetailsScreen(
-                                  universityId: universityId,
-                                  departmentId: departmentId,
-                                  subjectId: doc.id,
-                                  role: "CR",
-                                  userRoll: int.parse(roll),
-                                ),
-                              ),
-                            );
-                          },
-                          trailing: ElevatedButton(
-                            child: const Text("Start Attendance"),
-                            onPressed: () async {
-                              await createAttendance(doc.id);
+              return ListView.builder(
+                itemCount: subjects.length,
+                itemBuilder: (context, index) {
 
-                              ScaffoldMessenger.of(context)
-                                  .showSnackBar(
-                                const SnackBar(
-                                    content: Text(
-                                        "Attendance Started")),
-                              );
-                            },
-                          ),
+                  final subject = subjects[index];
+
+                  return Card(
+                    margin: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    child: ListTile(
+                      title: Text(subject['name']),
+                      subtitle: Text(
+                        isCR
+                            ? "You are Batch CR"
+                            : "Student",
+                        style: TextStyle(
+                          color:
+                              isCR ? Colors.green : Colors.black,
                         ),
-                      );
-                    }).toList(),
+                      ),
+                      trailing: Icon(
+                        isCR
+                            ? Icons.admin_panel_settings
+                            : Icons.arrow_forward,
+                        color:
+                            isCR ? Colors.green : Colors.grey,
+                      ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SubjectDetailsScreen(
+                              universityId: universityId,
+                              departmentId: departmentId,
+                              batch: batch,
+                              subjectId: subject.id,
+                              role: isCR ? "CR" : "Student",
+                              userRoll: roll,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   );
                 },
-              ),
-            ),
-          ],
-        ),
+              );
+            },
+          );
+        },
       ),
     );
   }

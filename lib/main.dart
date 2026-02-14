@@ -17,10 +17,11 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false,
       title: 'Attendance App',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: LoginScreen(),
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: const LoginScreen(),
     );
   }
 }

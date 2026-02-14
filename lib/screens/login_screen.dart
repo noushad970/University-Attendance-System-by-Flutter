@@ -57,7 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => AdminPanel(),
+            builder: (_) => const AdminPanel(),
           ),
         );
       } else if (role == "CR") {
@@ -65,9 +65,10 @@ class _LoginScreenState extends State<LoginScreen> {
           context,
           MaterialPageRoute(
             builder: (_) => CRHomeScreen(
-              roll: doc['roll'],
               universityId: doc['universityId'],
               departmentId: doc['departmentId'],
+              batch: doc['batch'],
+              roll: doc['roll'],
             ),
           ),
         );
@@ -76,9 +77,11 @@ class _LoginScreenState extends State<LoginScreen> {
           context,
           MaterialPageRoute(
             builder: (_) => StudentHomeScreen(
-              roll: doc['roll'],
               universityId: doc['universityId'],
               departmentId: doc['departmentId'],
+              batch: doc['batch'],
+              role: doc['role'],
+              roll: doc['roll'],
             ),
           ),
         );
