@@ -76,13 +76,39 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
           .doc(subjectId)
           .get();
 
+      String uniName = 'University';
+      String batchName = 'Batch';
+      String deptName = 'Department';
+      String subjectName = 'Subject';
+
+      if (univDoc.exists) {
+        final data = univDoc.data();
+        final val = data?['name'];
+        if (val is String && val.isNotEmpty) uniName = val;
+      }
+      if (batchDoc.exists) {
+        final data = batchDoc.data();
+        final val = data?['name'];
+        if (val is String && val.isNotEmpty) batchName = val;
+      }
+      if (deptDoc.exists) {
+        final data = deptDoc.data();
+        final val = data?['name'];
+        if (val is String && val.isNotEmpty) deptName = val;
+      }
+      if (subjDoc.exists) {
+        final data = subjDoc.data();
+        final val = data?['name'];
+        if (val is String && val.isNotEmpty) subjectName = val;
+      }
+
       return {
-        'university': univDoc['name'] ?? 'University',
-        'batch': batchDoc['name'] ?? 'Batch',
-        'department': deptDoc['name'] ?? 'Department',
-        'subject': subjDoc['name'] ?? 'Subject',
+        'university': uniName,
+        'batch': batchName,
+        'department': deptName,
+        'subject': subjectName,
       };
-    } catch (_) {
+    } catch (e) {
       return {
         'university': 'University',
         'batch': 'Batch',
@@ -94,25 +120,48 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
 
   /// 🔹 Get all rolls including extra
   Future<List<int>> getAllRolls() async {
-    final doc = await FirebaseFirestore.instance
-        .collection('universities')
-        .doc(universityId)
-        .collection('batches')
-        .doc(batch)
-        .collection('departments')
-        .doc(departmentId)
-        .collection('subjects')
-        .doc(subjectId)
-        .get();
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('universities')
+          .doc(universityId)
+          .collection('batches')
+          .doc(batch)
+          .collection('departments')
+          .doc(departmentId)
+          .collection('subjects')
+          .doc(subjectId)
+          .get();
 
-    int startRoll = doc['startRoll'];
-    int endRoll = doc['endRoll'];
-    List extra = doc['extraRolls'] ?? [];
+      if (!doc.exists) return <int>[];
+      final data = doc.data();
+      if (data == null) return <int>[];
 
-    final rolls = [for (int i = startRoll; i <= endRoll; i++) i];
-    rolls.addAll(extra.cast<int>());
-    rolls.sort();
-    return rolls;
+      final startVal = data['startRoll'];
+      final endVal = data['endRoll'];
+      final extrasVal = data['extraRolls'];
+
+      final int startRoll = (startVal is int)
+          ? startVal
+          : int.tryParse(startVal?.toString() ?? '') ?? 0;
+      final int endRoll = (endVal is int)
+          ? endVal
+          : int.tryParse(endVal?.toString() ?? '') ?? -1;
+      final List<int> extra = (extrasVal is List)
+          ? extrasVal
+                .map((e) => (e is int) ? e : int.tryParse(e.toString()) ?? 0)
+                .where((e) => e != 0)
+                .toList()
+          : <int>[];
+
+      if (endRoll < startRoll || startRoll == 0) return extra..sort();
+
+      final rolls = [for (int i = startRoll; i <= endRoll; i++) i];
+      rolls.addAll(extra);
+      rolls.sort();
+      return rolls;
+    } catch (e) {
+      return <int>[];
+    }
   }
 
   /// 🔹 Start a new attendance session
@@ -129,10 +178,10 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
         .doc(subjectId)
         .collection('attendanceSessions')
         .add({
-      'date': DateTime.now(),
-      'isActive': true,
-      'attendance': attendanceMap,
-    });
+          'date': DateTime.now(),
+          'isActive': true,
+          'attendance': attendanceMap,
+        });
   }
 
   /// 🔹 Close attendance session
@@ -148,10 +197,7 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
         .doc(subjectId)
         .collection('attendanceSessions')
         .doc(sessionId)
-        .update({
-      'isActive': false,
-      'closedAt': DateTime.now(),
-    });
+        .update({'isActive': false, 'closedAt': DateTime.now()});
   }
 
   /// 🔹 Update attendance (Student & CR)
@@ -180,12 +226,13 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
           .collection('attendanceSessions')
           .doc(sessionId)
           .update(updateData);
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   /// 🔹 Detect cheating for a session
-  Future<CheatDetectionResult?> detectCheatingInSession(String sessionId) async {
+  Future<CheatDetectionResult?> detectCheatingInSession(
+    String sessionId,
+  ) async {
     try {
       final sessionDoc = await FirebaseFirestore.instance
           .collection('universities')
@@ -210,17 +257,20 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
         if (isPresent && locationData.containsKey(roll)) {
           final loc = locationData[roll];
           final mac = loc['macAddress'];
-          if (mac is String && mac.isNotEmpty) macMap.putIfAbsent(mac, () => []).add(int.parse(roll));
+          if (mac is String && mac.isNotEmpty)
+            macMap.putIfAbsent(mac, () => []).add(int.parse(roll));
           final lat = loc['latitude'];
           final lon = loc['longitude'];
           if (lat is num && lon is num) {
-            records.add(AttendanceRecord(
-              roll: int.parse(roll),
-              latitude: lat.toDouble(),
-              longitude: lon.toDouble(),
-              macAddress: mac ?? 'UNKNOWN',
-              timestamp: loc['timestamp']?.toDate() ?? DateTime.now(),
-            ));
+            records.add(
+              AttendanceRecord(
+                roll: int.parse(roll),
+                latitude: lat.toDouble(),
+                longitude: lon.toDouble(),
+                macAddress: mac ?? 'UNKNOWN',
+                timestamp: loc['timestamp']?.toDate() ?? DateTime.now(),
+              ),
+            );
           }
         }
       }
@@ -272,10 +322,22 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("University: ${header['university']}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                        Text("Batch: ${header['batch']}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                        Text("Department: ${header['department']}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                        Text("Subject: ${header['subject']}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                        Text(
+                          "University: ${header['university']}",
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          "Batch: ${header['batch']}",
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          "Department: ${header['department']}",
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          "Subject: ${header['subject']}",
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ],
                     ),
                   ),
@@ -289,10 +351,13 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
                     builder: (context, rollsSnap) {
                       if (!rollsSnap.hasData) return const SizedBox();
                       return ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                        ),
                         icon: const Icon(Icons.play_arrow),
                         label: const Text("Start Attendance"),
-                        onPressed: () async => await startAttendance(rollsSnap.data!),
+                        onPressed: () async =>
+                            await startAttendance(rollsSnap.data!),
                       );
                     },
                   ),
@@ -315,19 +380,28 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
                       .limit(1)
                       .snapshots(),
                   builder: (context, liveSnap) {
-                    if (!liveSnap.hasData || liveSnap.data!.docs.isEmpty) return const SizedBox();
+                    if (!liveSnap.hasData || liveSnap.data!.docs.isEmpty)
+                      return const SizedBox();
                     final sessionId = liveSnap.data!.docs.first.id;
 
                     return Column(
                       children: [
-                        Text("⚡ Live Attendance Running", style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.bold)),
+                        Text(
+                          "⚡ Live Attendance Running",
+                          style: TextStyle(
+                            color: Colors.green.shade700,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         if (role == "CR")
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
                               ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.orange,
+                                ),
                                 icon: const Icon(Icons.warning),
                                 label: const Text("Check Cheaters"),
                                 onPressed: () async {
@@ -345,20 +419,32 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
                                   );
                                   if (result == true && context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text("Attendance closed successfully"), backgroundColor: Colors.green),
+                                      const SnackBar(
+                                        content: Text(
+                                          "Attendance closed successfully",
+                                        ),
+                                        backgroundColor: Colors.green,
+                                      ),
                                     );
                                   }
                                 },
                               ),
                               ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                ),
                                 icon: const Icon(Icons.close),
                                 label: const Text("Close Attendance"),
                                 onPressed: () async {
                                   await closeAttendance(sessionId);
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text("Attendance closed normally"), backgroundColor: Colors.orange),
+                                      const SnackBar(
+                                        content: Text(
+                                          "Attendance closed normally",
+                                        ),
+                                        backgroundColor: Colors.orange,
+                                      ),
                                     );
                                   }
                                 },
@@ -389,13 +475,17 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
                         .orderBy('date')
                         .snapshots(),
                     builder: (context, sessionSnap) {
-                      if (!sessionSnap.hasData) return const Center(child: CircularProgressIndicator());
+                      if (!sessionSnap.hasData)
+                        return const Center(child: CircularProgressIndicator());
                       final sessions = sessionSnap.data!.docs;
 
                       return FutureBuilder<List<int>>(
                         future: getAllRolls(),
                         builder: (context, rollSnap) {
-                          if (!rollSnap.hasData) return const Center(child: CircularProgressIndicator());
+                          if (!rollSnap.hasData)
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
                           final rolls = rollSnap.data!;
 
                           return SingleChildScrollView(
@@ -407,53 +497,84 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
                                 dataRowMinHeight: 60,
                                 dataRowMaxHeight: 80,
                                 columns: [
-                                  const DataColumn(label: Text("Roll No", style: TextStyle(fontWeight: FontWeight.bold))),
+                                  const DataColumn(
+                                    label: Text(
+                                      "Roll No",
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
                                   ...sessions.map((s) {
-                                    final date = (s['date'] as Timestamp).toDate();
-                                    return DataColumn(label: Text("${date.day}-${date.month}-${date.year}", style: const TextStyle(fontWeight: FontWeight.bold)));
+                                    final date = (s['date'] as Timestamp)
+                                        .toDate();
+                                    return DataColumn(
+                                      label: Text(
+                                        "${date.day}-${date.month}-${date.year}",
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    );
                                   }).toList(),
                                 ],
                                 rows: rolls.map((roll) {
-                                  return DataRow(cells: [
-                                    DataCell(Text(roll.toString())),
-                                    ...sessions.map((s) {
-                                      final attendance = s['attendance'] ?? {};
-                                      final isPresent = attendance[roll.toString()] ?? false;
-                                      final isActive = s['isActive'] ?? false;
-                                      return DataCell(
-                                        isActive
-                                            ? Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                mainAxisAlignment: MainAxisAlignment.center,
-                                                children: [
-                                                  Text(
-                                                    roll.toString(),
-                                                    style: const TextStyle(
-                                                      fontSize: 9,
-                                                      fontWeight: FontWeight.bold,
-                                                      color: Colors.deepPurple,
+                                  return DataRow(
+                                    cells: [
+                                      DataCell(Text(roll.toString())),
+                                      ...sessions.map((s) {
+                                        final attendance =
+                                            s['attendance'] ?? {};
+                                        final isPresent =
+                                            attendance[roll.toString()] ??
+                                            false;
+                                        final isActive = s['isActive'] ?? false;
+                                        return DataCell(
+                                          isActive
+                                              ? Column(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    Text(
+                                                      roll.toString(),
+                                                      style: const TextStyle(
+                                                        fontSize: 9,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color:
+                                                            Colors.deepPurple,
+                                                      ),
                                                     ),
-                                                  ),
-                                                  const SizedBox(height: 2),
-                                                  Transform.scale(
-                                                    scale: 0.9,
-                                                    child: Checkbox(
-                                                      value: isPresent,
-                                                      onChanged: (val) async {
-                                                        if (role == "Student" && roll != userRoll) return;
-                                                        await updateAttendance(s.id, roll, !isPresent);
-                                                      },
+                                                    const SizedBox(height: 2),
+                                                    Transform.scale(
+                                                      scale: 0.9,
+                                                      child: Checkbox(
+                                                        value: isPresent,
+                                                        onChanged: (val) async {
+                                                          if (role ==
+                                                                  "Student" &&
+                                                              roll != userRoll)
+                                                            return;
+                                                          await updateAttendance(
+                                                            s.id,
+                                                            roll,
+                                                            !isPresent,
+                                                          );
+                                                        },
+                                                      ),
                                                     ),
-                                                  ),
-                                                ],
-                                              )
-                                            : Checkbox(
-                                                value: isPresent,
-                                                onChanged: null,
-                                              ),
-                                      );
-                                    }).toList(),
-                                  ]);
+                                                  ],
+                                                )
+                                              : Checkbox(
+                                                  value: isPresent,
+                                                  onChanged: null,
+                                                ),
+                                        );
+                                      }).toList(),
+                                    ],
+                                  );
                                 }).toList(),
                               ),
                             ),

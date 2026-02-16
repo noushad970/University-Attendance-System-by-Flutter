@@ -18,7 +18,8 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
   final TextEditingController startRollController = TextEditingController();
   final TextEditingController endRollController = TextEditingController();
   final TextEditingController extraRollController = TextEditingController();
-  final TextEditingController crRollController = TextEditingController();
+  final TextEditingController crRollController =
+      TextEditingController(); // now used for Department CR Roll
 
   String? selectedUniversity;
   String? selectedBatch;
@@ -35,26 +36,29 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
   /// ==========================
   Future<void> createUniversity() async {
     if (universityController.text.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Enter University Name")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Enter University Name")));
       return;
     }
     await FirebaseFirestore.instance
         .collection('universities')
         .doc(universityController.text.trim())
         .set({
-      'name': universityController.text.trim(),
-      'createdAt': Timestamp.now(),
-    });
+          'name': universityController.text.trim(),
+          'createdAt': Timestamp.now(),
+        });
     universityController.clear();
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text("University Created")));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text("University Created")));
   }
 
   Future<void> createBatch() async {
-    if (batchController.text.isEmpty || crRollController.text.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Fill all Batch fields")));
+    if (batchController.text.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Enter Batch Name")));
       return;
     }
     await FirebaseFirestore.instance
@@ -63,20 +67,27 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
         .collection('batches')
         .doc(batchController.text.trim())
         .set({
-      'name': batchController.text.trim(),
-      'crRoll': int.tryParse(crRollController.text.trim()),
-      'createdAt': Timestamp.now(),
-    });
+          'name': batchController.text.trim(),
+          'createdAt': Timestamp.now(),
+        });
     batchController.clear();
-    crRollController.clear();
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text("Batch Created")));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text("Batch Created")));
   }
 
   Future<void> createDepartment() async {
-    if (departmentController.text.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Enter Department Name")));
+    if (departmentController.text.isEmpty || crRollController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Enter Department Name & CR Roll")),
+      );
+      return;
+    }
+    final int? crRoll = int.tryParse(crRollController.text.trim());
+    if (crRoll == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("CR Roll must be a number")));
       return;
     }
     await FirebaseFirestore.instance
@@ -87,20 +98,24 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
         .collection('departments')
         .doc(departmentController.text.trim())
         .set({
-      'name': departmentController.text.trim(),
-      'createdAt': Timestamp.now(),
-    });
+          'name': departmentController.text.trim(),
+          'crRoll': crRoll,
+          'createdAt': Timestamp.now(),
+        });
     departmentController.clear();
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text("Department Created")));
+    crRollController.clear();
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text("Department Created")));
   }
 
   Future<void> createSubject() async {
     if (subjectController.text.isEmpty ||
         startRollController.text.isEmpty ||
         endRollController.text.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Fill all Subject fields")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Fill all Subject fields")));
       return;
     }
 
@@ -124,20 +139,21 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
         .doc(selectedDepartment)
         .collection('subjects')
         .add({
-      'name': subjectController.text.trim(),
-      'startRoll': startRoll,
-      'endRoll': endRoll,
-      'extraRolls': extraRolls,
-      'createdAt': Timestamp.now(),
-    });
+          'name': subjectController.text.trim(),
+          'startRoll': startRoll,
+          'endRoll': endRoll,
+          'extraRolls': extraRolls,
+          'createdAt': Timestamp.now(),
+        });
 
     subjectController.clear();
     startRollController.clear();
     endRollController.clear();
     extraRollController.clear();
 
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text("Subject Created")));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text("Subject Created")));
   }
 
   /// ==========================
@@ -165,7 +181,7 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
                   color: Colors.purpleAccent.withOpacity(0.4),
                   offset: const Offset(0, 5),
                   blurRadius: 10,
-                )
+                ),
               ],
               borderRadius: BorderRadius.circular(12),
             ),
@@ -173,9 +189,10 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
             child: Text(
               text,
               style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16),
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
             ),
           ),
         );
@@ -186,10 +203,11 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
   /// ==========================
   /// STYLIZED TEXTFIELD
   /// ==========================
-  Widget styledTextField(
-      {required TextEditingController controller,
-      required String label,
-      TextInputType keyboardType = TextInputType.text}) {
+  Widget styledTextField({
+    required TextEditingController controller,
+    required String label,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: TextField(
@@ -201,8 +219,9 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
           fillColor: Colors.purple.shade50,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           focusedBorder: OutlineInputBorder(
-              borderSide: const BorderSide(color: Colors.deepPurple),
-              borderRadius: BorderRadius.circular(12)),
+            borderSide: const BorderSide(color: Colors.deepPurple),
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       ),
     );
@@ -231,20 +250,24 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
               child: const Text(
                 "Create University",
                 style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 20,
-                    color: Colors.deepPurple),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                  color: Colors.deepPurple,
+                ),
               ),
             ),
             styledTextField(
-                controller: universityController, label: "University Name"),
+              controller: universityController,
+              label: "University Name",
+            ),
             animatedButton("Create University", createUniversity),
             const Divider(height: 40, thickness: 2, color: Colors.deepPurple),
 
             // 🟣 SELECT UNIVERSITY
             StreamBuilder<QuerySnapshot>(
-              stream:
-                  FirebaseFirestore.instance.collection('universities').snapshots(),
+              stream: FirebaseFirestore.instance
+                  .collection('universities')
+                  .snapshots(),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) return const SizedBox();
                 return DropdownButtonFormField<String?>(
@@ -253,8 +276,9 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
                     labelText: "Select University",
                     filled: true,
                     fillColor: Colors.purple.shade50,
-                    border:
-                        OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   items: snapshot.data!.docs.map((doc) {
                     return DropdownMenuItem<String?>(
@@ -276,14 +300,18 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
 
             // 🔵 CREATE BATCH
             if (selectedUniversity != null) ...[
-              const Text("Create Batch",
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 18, color: Colors.deepPurple)),
-              styledTextField(controller: batchController, label: "Batch Name (e.g., 2023)"),
+              const Text(
+                "Create Batch",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: Colors.deepPurple,
+                ),
+              ),
               styledTextField(
-                  controller: crRollController,
-                  label: "Batch CR Roll",
-                  keyboardType: TextInputType.number),
+                controller: batchController,
+                label: "Batch Name (e.g., 2023)",
+              ),
               animatedButton("Create Batch", createBatch),
             ],
 
@@ -306,7 +334,8 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
                       filled: true,
                       fillColor: Colors.purple.shade50,
                       border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                     items: snapshot.data!.docs.map((doc) {
                       return DropdownMenuItem<String?>(
@@ -328,10 +357,23 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
 
             // 🟢 CREATE DEPARTMENT
             if (selectedBatch != null) ...[
-              const Text("Create Department",
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 18, color: Colors.deepPurple)),
-              styledTextField(controller: departmentController, label: "Department Name"),
+              const Text(
+                "Create Department",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: Colors.deepPurple,
+                ),
+              ),
+              styledTextField(
+                controller: departmentController,
+                label: "Department Name",
+              ),
+              styledTextField(
+                controller: crRollController,
+                label: "Department CR Roll",
+                keyboardType: TextInputType.number,
+              ),
               animatedButton("Create Department", createDepartment),
             ],
 
@@ -356,12 +398,17 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
                       filled: true,
                       fillColor: Colors.purple.shade50,
                       border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                     items: snapshot.data!.docs.map((doc) {
                       return DropdownMenuItem<String?>(
                         value: doc.id,
-                        child: Text(doc['name']),
+                        child: Text(
+                          (doc['name'] ?? '1') +
+                              ' • CR: ' +
+                              (doc['crRoll']?.toString() ?? '1'),
+                        ),
                       );
                     }).toList(),
                     onChanged: (value) {
@@ -377,21 +424,32 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
 
             // 🔴 CREATE SUBJECT
             if (selectedDepartment != null) ...[
-              const Text("Create Subject",
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 18, color: Colors.deepPurple)),
-              styledTextField(controller: subjectController, label: "Subject Name"),
+              const Text(
+                "Create Subject",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: Colors.deepPurple,
+                ),
+              ),
               styledTextField(
-                  controller: startRollController,
-                  label: "Start Student ID",
-                  keyboardType: TextInputType.number),
+                controller: subjectController,
+                label: "Subject Name",
+              ),
               styledTextField(
-                  controller: endRollController,
-                  label: "End Student ID",
-                  keyboardType: TextInputType.number),
+                controller: startRollController,
+                label: "Start Student ID",
+                keyboardType: TextInputType.number,
+              ),
               styledTextField(
-                  controller: extraRollController,
-                  label: "Extra Student IDs (comma separated)"),
+                controller: endRollController,
+                label: "End Student ID",
+                keyboardType: TextInputType.number,
+              ),
+              styledTextField(
+                controller: extraRollController,
+                label: "Extra Student IDs (comma separated)",
+              ),
               animatedButton("Create Subject", createSubject),
             ],
           ],

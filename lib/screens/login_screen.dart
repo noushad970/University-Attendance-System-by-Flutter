@@ -5,6 +5,7 @@ import 'admin_panel.dart';
 import 'student_home_screen.dart';
 import 'cr_home_screen.dart';
 import 'register_screen.dart';
+import 'university_admin_page.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -13,7 +14,8 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final rollController = TextEditingController();
   final passwordController = TextEditingController();
 
@@ -53,9 +55,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final password = passwordController.text.trim();
 
     if (roll.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Enter Roll & Password")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Enter Roll & Password")));
       return;
     }
 
@@ -82,8 +84,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
   }
 
-  Future<void> _loginWithCredentials(String roll, String password,
-      {required bool isAuto}) async {
+  Future<void> _loginWithCredentials(
+    String roll,
+    String password, {
+    required bool isAuto,
+  }) async {
     if (mounted) {
       setState(() => isLoading = true);
     }
@@ -96,9 +101,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
       if (!doc.exists) {
         if (!isAuto) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("User not found")),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text("User not found")));
         }
         await _clearSavedLogin();
         return;
@@ -106,9 +111,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
       if (doc['password'] != password) {
         if (!isAuto) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Wrong Password")),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text("Wrong Password")));
         }
         await _clearSavedLogin();
         return;
@@ -116,48 +121,102 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
       await _saveLogin(roll, password);
 
-      final role = doc['role'];
+      final rawRole = doc['role'];
+      final role = (rawRole is String) ? rawRole.trim() : rawRole.toString();
 
       if (!mounted) return;
 
-      if (role == "Admin") {
+      if (role == "Admin" || role == "Admin (Global)") {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const AdminPanel()),
+        );
+      } else if (role == "UniversityAdmin" || role == "University Admin") {
+        final String uniId = (doc['universityId'] is String)
+            ? (doc['universityId'] as String)
+            : doc['universityId'].toString();
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => const AdminPanel(),
+            builder: (_) => UniversityAdminPage(
+              universityId: uniId,
+              ownerRoll: doc['roll'],
+            ),
           ),
         );
       } else if (role == "CR") {
+        final String uniId = (doc['universityId'] ?? '').toString();
+        final String depId = (doc['departmentId'] ?? '').toString();
+        final String batchId = (doc['batch'] ?? '').toString();
+        if (uniId.isEmpty ||
+            depId.isEmpty ||
+            batchId.isEmpty ||
+            uniId == '1' ||
+            depId == '1' ||
+            batchId == '1') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Your account is missing University/Batch/Department. Please re-register with a valid selection.',
+              ),
+            ),
+          );
+          await _clearSavedLogin();
+          return;
+        }
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (_) => CRHomeScreen(
-              universityId: doc['universityId'],
-              departmentId: doc['departmentId'],
-              batch: doc['batch'],
+              universityId: uniId,
+              departmentId: depId,
+              batch: batchId,
               roll: doc['roll'],
             ),
           ),
         );
-      } else {
+      } else if (role == "Student") {
+        final String uniId = (doc['universityId'] ?? '').toString();
+        final String depId = (doc['departmentId'] ?? '').toString();
+        final String batchId = (doc['batch'] ?? '').toString();
+        if (uniId.isEmpty ||
+            depId.isEmpty ||
+            batchId.isEmpty ||
+            uniId == '1' ||
+            depId == '1' ||
+            batchId == '1') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Your account is missing University/Batch/Department. Please re-register with a valid selection.',
+              ),
+            ),
+          );
+          await _clearSavedLogin();
+          return;
+        }
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (_) => StudentHomeScreen(
-              universityId: doc['universityId'],
-              departmentId: doc['departmentId'],
-              batch: doc['batch'],
+              universityId: uniId,
+              departmentId: depId,
+              batch: batchId,
               role: doc['role'],
               roll: doc['roll'],
             ),
           ),
         );
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Unknown role: $role')));
       }
     } catch (e) {
       if (!isAuto) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error: $e")));
       }
     } finally {
       if (mounted) {
@@ -208,7 +267,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     child: CircleAvatar(
                       radius: 60,
                       backgroundColor: Colors.transparent,
-                      child: const Icon(Icons.school, size: 60, color: Colors.white),
+                      child: const Icon(
+                        Icons.school,
+                        size: 60,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
@@ -339,7 +402,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         filled: true,
         fillColor: Colors.white,
         labelStyle: const TextStyle(color: Colors.deepPurple),
-        contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 18,
+          horizontal: 20,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,

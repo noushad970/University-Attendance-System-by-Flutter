@@ -8,10 +8,13 @@ class RegisterScreen extends StatefulWidget {
   State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProviderStateMixin {
+class _RegisterScreenState extends State<RegisterScreen>
+    with SingleTickerProviderStateMixin {
   final rollController = TextEditingController();
   final passwordController = TextEditingController();
   final adminPasswordController = TextEditingController();
+  final TextEditingController universityNameController =
+      TextEditingController();
 
   String? selectedUniversityId;
   String? selectedDepartmentId;
@@ -45,6 +48,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     rollController.dispose();
     passwordController.dispose();
     adminPasswordController.dispose();
+    universityNameController.dispose();
     super.dispose();
   }
 
@@ -53,19 +57,29 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
   /// ==============================
   Future<void> registerUser() async {
     if (rollController.text.isEmpty || passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please fill all fields")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Please fill all fields")));
       return;
     }
 
-    if (selectedRole != "Admin") {
+    // Validate role-specific required fields
+    if (selectedRole == "Student" || selectedRole == "CR") {
       if (selectedUniversityId == null ||
           selectedBatchId == null ||
           selectedDepartmentId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Select University, Batch & Department")),
+          const SnackBar(
+            content: Text("Select University, Batch & Department"),
+          ),
         );
+        return;
+      }
+    } else if (selectedRole == "UniversityAdmin") {
+      if (universityNameController.text.trim().isEmpty) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Enter University Name")));
         return;
       }
     }
@@ -73,6 +87,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     setState(() => isLoading = true);
 
     try {
+      // Verify global Admin secret only for Admin role
       if (selectedRole == "Admin") {
         final configDoc = await FirebaseFirestore.instance
             .collection('config')
@@ -80,49 +95,92 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
             .get();
         String correctPassword = configDoc['adminPassword'];
         if (adminPasswordController.text.trim() != correctPassword) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Wrong Admin Password")),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text("Wrong Admin Password")));
           setState(() => isLoading = false);
           return;
         }
       }
 
+      final String rollId = rollController.text.trim();
+
       final existingUser = await FirebaseFirestore.instance
           .collection('users')
-          .doc(rollController.text.trim())
+          .doc(rollId)
           .get();
 
       if (existingUser.exists) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("User already exists")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("User already exists")));
         setState(() => isLoading = false);
         return;
       }
 
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(rollController.text.trim())
-          .set({
-        'roll': int.parse(rollController.text.trim()),
+      String? createdUniversityId;
+
+      // If registering as UniversityAdmin, ensure only one university per owner and create it
+      if (selectedRole == "UniversityAdmin") {
+        // Check if this owner already created a university
+        final existingOwned = await FirebaseFirestore.instance
+            .collection('universities')
+            .where('ownerRoll', isEqualTo: int.parse(rollId))
+            .limit(1)
+            .get();
+        if (existingOwned.docs.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("You already own a university")),
+          );
+          setState(() => isLoading = false);
+          return;
+        }
+
+        final uniRef = await FirebaseFirestore.instance
+            .collection('universities')
+            .add({
+              'name': universityNameController.text.trim(),
+              'ownerRoll': int.parse(rollId),
+              'createdAt': Timestamp.now(),
+            });
+        createdUniversityId = uniRef.id;
+      }
+
+      // Default fallback values (string "1") for nullable fields
+      final String defaultString = "1";
+      final String universityIdToSave = (selectedRole == "Admin")
+          ? defaultString
+          : (selectedRole == "UniversityAdmin"
+                ? (createdUniversityId ?? defaultString)
+                : (selectedUniversityId ?? defaultString));
+      final String departmentIdToSave =
+          (selectedRole == "Student" || selectedRole == "CR")
+          ? (selectedDepartmentId ?? defaultString)
+          : defaultString;
+      final String batchToSave =
+          (selectedRole == "Student" || selectedRole == "CR")
+          ? (selectedBatchId ?? defaultString)
+          : defaultString;
+
+      await FirebaseFirestore.instance.collection('users').doc(rollId).set({
+        'roll': int.parse(rollId),
         'password': passwordController.text.trim(),
         'role': selectedRole,
-        'universityId': selectedRole == "Admin" ? null : selectedUniversityId,
-        'departmentId': selectedRole == "Admin" ? null : selectedDepartmentId,
-        'batch': selectedRole == "Admin" ? null : selectedBatchId,
+        'universityId': universityIdToSave,
+        'departmentId': departmentIdToSave,
+        'batch': batchToSave,
         'createdAt': Timestamp.now(),
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Registration Successful")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Registration Successful")));
 
       Navigator.pop(context);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
     }
 
     setState(() => isLoading = false);
@@ -190,7 +248,14 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                   items: const [
                     DropdownMenuItem(value: "Student", child: Text("Student")),
                     DropdownMenuItem(value: "CR", child: Text("CR")),
-                    DropdownMenuItem(value: "Admin", child: Text("Admin")),
+                    DropdownMenuItem(
+                      value: "UniversityAdmin",
+                      child: Text("University Admin"),
+                    ),
+                    DropdownMenuItem(
+                      value: "Admin",
+                      child: Text("Admin (Global)"),
+                    ),
                   ],
                   onChanged: (value) {
                     setState(() {
@@ -198,16 +263,31 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                       selectedUniversityId = null;
                       selectedDepartmentId = null;
                       selectedBatchId = null;
+                      universityNameController.clear();
+                      adminPasswordController.clear();
                     });
                   },
                 ),
 
                 const SizedBox(height: 20),
 
-                // UNIVERSITY SELECT
-                if (selectedRole != "Admin")
+                // University name input for UniversityAdmin role
+                if (selectedRole == "UniversityAdmin")
+                  _buildTextField(
+                    controller: universityNameController,
+                    label: "University Name",
+                    icon: Icons.apartment,
+                  ),
+
+                const SizedBox(height: 20),
+
+                // UNIVERSITY SELECT for Student/CR
+                if (selectedRole != "Admin" &&
+                    selectedRole != "UniversityAdmin")
                   StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('universities').snapshots(),
+                    stream: FirebaseFirestore.instance
+                        .collection('universities')
+                        .snapshots(),
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) return Container();
                       return _buildDropdown<String?>(
@@ -232,8 +312,10 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
 
                 const SizedBox(height: 20),
 
-                // BATCH SELECT
-                if (selectedRole != "Admin" && selectedUniversityId != null)
+                // BATCH SELECT for Student/CR
+                if (selectedRole != "Admin" &&
+                    selectedRole != "UniversityAdmin" &&
+                    selectedUniversityId != null)
                   StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance
                         .collection('universities')
@@ -263,8 +345,9 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
 
                 const SizedBox(height: 20),
 
-                // DEPARTMENT SELECT
+                // DEPARTMENT SELECT for Student/CR
                 if (selectedRole != "Admin" &&
+                    selectedRole != "UniversityAdmin" &&
                     selectedUniversityId != null &&
                     selectedBatchId != null)
                   StreamBuilder<QuerySnapshot>(
@@ -298,16 +381,31 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                 const SizedBox(height: 20),
 
                 // Roll ID
-                _buildTextField(controller: rollController, label: "Roll ID", icon: Icons.perm_identity, keyboardType: TextInputType.number),
+                _buildTextField(
+                  controller: rollController,
+                  label: "Roll ID",
+                  icon: Icons.perm_identity,
+                  keyboardType: TextInputType.number,
+                ),
                 const SizedBox(height: 20),
 
                 // Password
-                _buildTextField(controller: passwordController, label: "Password", icon: Icons.lock, obscureText: true),
+                _buildTextField(
+                  controller: passwordController,
+                  label: "Password",
+                  icon: Icons.lock,
+                  obscureText: true,
+                ),
                 const SizedBox(height: 20),
 
                 // Admin secret password
                 if (selectedRole == "Admin")
-                  _buildTextField(controller: adminPasswordController, label: "Admin Secret Password", icon: Icons.vpn_key, obscureText: true),
+                  _buildTextField(
+                    controller: adminPasswordController,
+                    label: "Admin Secret Password",
+                    icon: Icons.vpn_key,
+                    obscureText: true,
+                  ),
 
                 const SizedBox(height: 30),
 
@@ -344,7 +442,10 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
         filled: true,
         fillColor: Colors.white,
         labelStyle: const TextStyle(color: Colors.deepPurple),
-        contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 18,
+          horizontal: 20,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
@@ -371,7 +472,10 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
       items: items,
       onChanged: onChanged,
