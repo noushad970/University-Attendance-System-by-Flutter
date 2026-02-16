@@ -1,220 +1,204 @@
+import 'dart:io';
+import 'dart:math' as math;
 import 'package:geolocator/geolocator.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:flutter/foundation.dart';
-import 'dart:io';
-import 'dart:math';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class FraudDetectionService {
+  static const _deviceIdKey = 'device_id';
+
+  static Future<String> getDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getString(_deviceIdKey);
+    if (existing != null && existing.isNotEmpty) return existing;
+
+    final deviceInfo = DeviceInfoPlugin();
+    String id = '';
+    try {
+      if (Platform.isAndroid) {
+        final info = await deviceInfo.androidInfo;
+        id = info.id; // device_info_plus exposes a stable id field
+      } else if (Platform.isIOS) {
+        final info = await deviceInfo.iosInfo;
+        id = info.identifierForVendor ?? '';
+      }
+    } catch (_) {}
+
+    if (id.isEmpty) {
+      id = _randomUuid();
+    }
+    await prefs.setString(_deviceIdKey, id);
+    return id;
+  }
+
+  static String _randomUuid() {
+    final rand = math.Random.secure();
+    String hex(int length) => List.generate(
+      length,
+      (_) => rand.nextInt(16),
+    ).map((v) => v.toRadixString(16)).join();
+    return '${hex(8)}-${hex(4)}-${hex(4)}-${hex(4)}-${hex(12)}';
+  }
+
+  static Future<Position?> getCurrentLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        await Geolocator.openLocationSettings();
+        return null;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return null;
+      }
+      if (permission == LocationPermission.deniedForever) return null;
+      return await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Basic mean-based outlier detection (kept for fallback)
+  static CheatDetectionResult detectCheating(List<AttendanceRecord> records) {
+    if (records.isEmpty) {
+      return CheatDetectionResult(
+        duplicateMacRolls: [],
+        outlierLocationRolls: [],
+        locationStats: {
+          'centerLatitude': 0.0,
+          'centerLongitude': 0.0,
+          'meanDistance': 0.0,
+          'stdDeviation': 0.0,
+          'allDistances': <int, double>{},
+        },
+      );
+    }
+    final meanLat =
+        records.map((r) => r.latitude).reduce((a, b) => a + b) / records.length;
+    final meanLon =
+        records.map((r) => r.longitude).reduce((a, b) => a + b) /
+        records.length;
+    return detectCheatingWithCenter(
+      records,
+      meanLat,
+      meanLon,
+      radiusMeters: 20,
+    );
+  }
+
+  /// Advanced detection using CR-defined center radius and duplicate device IDs
+  static CheatDetectionResult detectCheatingWithCenter(
+    List<AttendanceRecord> records,
+    double centerLat,
+    double centerLon, {
+    double radiusMeters = 20,
+  }) {
+    // Distances to CR center
+    final Map<int, double> distances = {};
+    for (final r in records) {
+      distances[r.roll] = _haversineDistance(
+        centerLat,
+        centerLon,
+        r.latitude,
+        r.longitude,
+      );
+    }
+
+    // Outliers: outside radiusMeters
+    final outliers = <int>[];
+    distances.forEach((roll, d) {
+      if (d > radiusMeters) outliers.add(roll);
+    });
+
+    // Duplicate device IDs
+    final deviceMap = <String, List<int>>{};
+    for (final r in records) {
+      if (r.deviceId.isNotEmpty) {
+        deviceMap.putIfAbsent(r.deviceId, () => []).add(r.roll);
+      }
+    }
+    final duplicateDeviceRolls = <int>[];
+    for (final rolls in deviceMap.values) {
+      if (rolls.length > 1) duplicateDeviceRolls.addAll(rolls);
+    }
+
+    return CheatDetectionResult(
+      // reuse duplicateMacRolls field to carry duplicate device ID rolls
+      duplicateMacRolls: duplicateDeviceRolls,
+      outlierLocationRolls: outliers,
+      locationStats: {
+        'centerLatitude': centerLat,
+        'centerLongitude': centerLon,
+        'meanDistance': _mean(distances.values),
+        'stdDeviation': _stdDev(distances.values),
+        'allDistances': distances,
+      },
+    );
+  }
+
+  static double _mean(Iterable<double> values) {
+    if (values.isEmpty) return 0.0;
+    return values.reduce((a, b) => a + b) / values.length;
+  }
+
+  static double _stdDev(Iterable<double> values) {
+    if (values.isEmpty) return 0.0;
+    final m = _mean(values);
+    double variance = 0.0;
+    for (final v in values) {
+      variance += math.pow(v - m, 2).toDouble();
+    }
+    variance /= values.length;
+    return math.sqrt(variance);
+  }
+
+  static double _haversineDistance(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
+    const double R = 6371000;
+    final double dLat = _toRad(lat2 - lat1);
+    final double dLon = _toRad(lon2 - lon1);
+    final double a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_toRad(lat1)) *
+            math.cos(_toRad(lat2)) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+    final double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return R * c;
+  }
+
+  static double _toRad(double degree) => degree * math.pi / 180;
+}
 
 class AttendanceRecord {
   final int roll;
   final double latitude;
   final double longitude;
-  final String macAddress;
+  final String deviceId;
   final DateTime timestamp;
-
   AttendanceRecord({
     required this.roll,
     required this.latitude,
     required this.longitude,
-    required this.macAddress,
+    required this.deviceId,
     required this.timestamp,
   });
-
-  Map<String, dynamic> toMap() {
-    return {
-      'roll': roll,
-      'latitude': latitude,
-      'longitude': longitude,
-      'macAddress': macAddress,
-      'timestamp': timestamp,
-    };
-  }
 }
 
 class CheatDetectionResult {
-  final List<int> duplicateMacRolls; // Students with same MAC
-  final List<int> outlierLocationRolls; // Students from suspicious locations
+  final List<int> duplicateMacRolls; // holds duplicate device IDs
+  final List<int> outlierLocationRolls;
   final Map<String, dynamic> locationStats;
-
   CheatDetectionResult({
     required this.duplicateMacRolls,
     required this.outlierLocationRolls,
     required this.locationStats,
   });
-}
-
-class FraudDetectionService {
-  static final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
-
-  /// Get device MAC address
-  static Future<String> getDeviceMacAddress() async {
-    try {
-      if (kIsWeb) {
-        return 'WEB_DEVICE';
-      }
-
-      if (Platform.isIOS) {
-        final iosInfo = await _deviceInfo.iosInfo;
-        return iosInfo.identifierForVendor ?? 'UNKNOWN_MAC';
-      }
-
-      if (Platform.isAndroid) {
-        final androidInfo = await _deviceInfo.androidInfo;
-        return androidInfo.id ?? 'UNKNOWN_MAC';
-      }
-
-      return 'UNKNOWN_PLATFORM';
-    } catch (e) {
-      return 'ERROR_MAC_${DateTime.now().millisecondsSinceEpoch}';
-    }
-  }
-
-  /// Request location permissions and get current location
-  static Future<Position?> getCurrentLocation() async {
-    try {
-      LocationPermission permission = await Geolocator.checkPermission();
-
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          return null;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        await Geolocator.openAppSettings();
-        return null;
-      }
-
-      return await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.best,
-      );
-    } catch (e) {
-      print('Error getting location: $e');
-      return null;
-    }
-  }
-
-  /// Create attendance record with location and MAC
-  static Future<AttendanceRecord?> createAttendanceRecord(int roll) async {
-    try {
-      final position = await getCurrentLocation();
-      if (position == null) return null;
-
-      final macAddress = await getDeviceMacAddress();
-
-      return AttendanceRecord(
-        roll: roll,
-        latitude: position.latitude,
-        longitude: position.longitude,
-        macAddress: macAddress,
-        timestamp: DateTime.now(),
-      );
-    } catch (e) {
-      print('Error creating attendance record: $e');
-      return null;
-    }
-  }
-
-  /// Detect cheating - duplicate MAC addresses
-  static List<int> detectDuplicateMacs(List<AttendanceRecord> records) {
-    final macMap = <String, List<int>>{};
-
-    for (final record in records) {
-      if (!macMap.containsKey(record.macAddress)) {
-        macMap[record.macAddress] = [];
-      }
-      macMap[record.macAddress]!.add(record.roll);
-    }
-
-    final cheaters = <int>[];
-    for (final rolls in macMap.values) {
-      if (rolls.length > 1) {
-        cheaters.addAll(rolls);
-      }
-    }
-
-    return cheaters;
-  }
-
-  /// Calculate distance between two coordinates (in meters)
-  static double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
-    const double R = 6371000; // Earth radius in meters
-
-    final double dLat = _toRad(lat2 - lat1);
-    final double dLon = _toRad(lon2 - lon1);
-
-    final double a = sin(dLat / 2) * sin(dLat / 2) +
-        cos(_toRad(lat1)) *
-            cos(_toRad(lat2)) *
-            sin(dLon / 2) *
-            sin(dLon / 2);
-
-    final double c = 2 * atan2(sqrt(a), sqrt(1 - a));
-    return R * c;
-  }
-
-  static double _toRad(double degree) {
-    return degree * pi / 180;
-  }
-
-  /// Detect outlier locations
-  static CheatDetectionResult detectCheating(List<AttendanceRecord> records) {
-    // Detect duplicate MACs
-    final duplicateMacs = detectDuplicateMacs(records);
-
-    // Calculate center location (average of all coordinates)
-    double centerLat = 0, centerLon = 0;
-    for (final record in records) {
-      centerLat += record.latitude;
-      centerLon += record.longitude;
-    }
-    centerLat /= records.length;
-    centerLon /= records.length;
-
-    // Calculate distances from center
-    final distances = <int, double>{};
-    for (final record in records) {
-      final distance = calculateDistance(
-        centerLat,
-        centerLon,
-        record.latitude,
-        record.longitude,
-      );
-      distances[record.roll] = distance;
-    }
-
-    // Calculate standard deviation to find outliers
-    double meanDistance = 0;
-    for (final distance in distances.values) {
-      meanDistance += distance;
-    }
-    meanDistance /= distances.length;
-
-    double variance = 0;
-    for (final distance in distances.values) {
-      variance += pow(distance - meanDistance, 2).toDouble();
-    }
-    variance /= distances.length;
-    final stdDev = sqrt(variance);
-
-    // Outliers are more than 2 standard deviations from mean
-    final outliers = <int>[];
-    for (final entry in distances.entries) {
-      if ((entry.value - meanDistance).abs() > 2 * stdDev && stdDev > 0) {
-        outliers.add(entry.key);
-      }
-    }
-
-    return CheatDetectionResult(
-      duplicateMacRolls: duplicateMacs,
-      outlierLocationRolls: outliers,
-      locationStats: {
-        'centerLatitude': centerLat,
-        'centerLongitude': centerLon,
-        'meanDistance': meanDistance,
-        'stdDeviation': stdDev,
-        'allDistances': distances,
-      },
-    );
-  }
 }

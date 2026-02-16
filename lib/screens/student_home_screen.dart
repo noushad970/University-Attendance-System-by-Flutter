@@ -34,45 +34,53 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   }
 
   Future<bool> isBatchCR() async {
-    final batchDoc = await FirebaseFirestore.instance
-        .collection('universities')
-        .doc(widget.universityId)
-        .collection('batches')
-        .doc(widget.batch)
-        .get();
-
-    if (!batchDoc.exists || batchDoc['crRoll'] == null) {
-      return false;
-    }
-
-    int crRoll = batchDoc['crRoll'];
-    return crRoll == widget.roll;
-  }
-
-  Future<Set<String>> getLiveSubjectIds(
-      List<QueryDocumentSnapshot> subjects) async {
-    final liveIds = <String>{};
-
-    for (final subject in subjects) {
-      final liveSession = await FirebaseFirestore.instance
+    try {
+      final deptDoc = await FirebaseFirestore.instance
           .collection('universities')
           .doc(widget.universityId)
           .collection('batches')
           .doc(widget.batch)
           .collection('departments')
           .doc(widget.departmentId)
-          .collection('subjects')
-          .doc(subject.id)
-          .collection('attendanceSessions')
-          .where('isActive', isEqualTo: true)
-          .limit(1)
           .get();
 
-      if (liveSession.docs.isNotEmpty) {
-        liveIds.add(subject.id);
+      if (!deptDoc.exists) return false;
+      final data = deptDoc.data();
+      if (data == null) return false;
+      final crVal = data['crRoll'];
+      final int? crRoll = (crVal is int)
+          ? crVal
+          : int.tryParse(crVal?.toString() ?? '');
+      return crRoll != null && crRoll == widget.roll;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<Set<String>> getLiveSubjectIds(
+    List<QueryDocumentSnapshot> subjects,
+  ) async {
+    final liveIds = <String>{};
+    for (final subject in subjects) {
+      try {
+        final liveSession = await FirebaseFirestore.instance
+            .collection('universities')
+            .doc(widget.universityId)
+            .collection('batches')
+            .doc(widget.batch)
+            .collection('departments')
+            .doc(widget.departmentId)
+            .collection('subjects')
+            .doc(subject.id)
+            .collection('attendanceSessions')
+            .where('isActive', isEqualTo: true)
+            .limit(1)
+            .get();
+        if (liveSession.docs.isNotEmpty) liveIds.add(subject.id);
+      } catch (_) {
+        // ignore errors per subject
       }
     }
-
     return liveIds;
   }
 
@@ -100,11 +108,19 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         key: ValueKey(_refreshTick),
         future: isBatchCR(),
         builder: (context, crSnapshot) {
-          if (!crSnapshot.hasData) {
+          if (crSnapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
+          if (crSnapshot.hasError) {
+            return Center(
+              child: Text('Failed to load CR status: ${crSnapshot.error}'),
+            );
+          }
+          if (!crSnapshot.hasData) {
+            return const Center(child: Text('No data'));
+          }
 
-          bool isCR = crSnapshot.data!;
+          final bool isCR = crSnapshot.data!;
 
           return StreamBuilder<QuerySnapshot>(
             key: ValueKey(_refreshTick),
@@ -119,11 +135,15 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                 .orderBy('createdAt', descending: false)
                 .snapshots(),
             builder: (context, snapshot) {
-              if (!snapshot.hasData) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
-
-              if (snapshot.data!.docs.isEmpty) {
+              if (snapshot.hasError) {
+                return Center(
+                  child: Text('Failed to load subjects: ${snapshot.error}'),
+                );
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                 return const Center(
                   child: Text(
                     "No subjects available",
@@ -137,11 +157,17 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               return FutureBuilder<Set<String>>(
                 future: getLiveSubjectIds(subjects),
                 builder: (context, liveSnapshot) {
-                  if (!liveSnapshot.hasData) {
+                  if (liveSnapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
-
-                  final liveIds = liveSnapshot.data!;
+                  if (liveSnapshot.hasError) {
+                    return Center(
+                      child: Text(
+                        'Failed to check live sessions: ${liveSnapshot.error}',
+                      ),
+                    );
+                  }
+                  final liveIds = liveSnapshot.data ?? <String>{};
                   final liveSubjects = subjects
                       .where((subject) => liveIds.contains(subject.id))
                       .toList();
@@ -166,12 +192,14 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                               ),
                             ),
                           ),
-                          ...liveSubjects.map((subject) => _buildSubjectTile(
-                                context,
-                                subject,
-                                isCR,
-                                isLive: true,
-                              )),
+                          ...liveSubjects.map(
+                            (subject) => _buildSubjectTile(
+                              context,
+                              subject,
+                              isCR,
+                              isLive: true,
+                            ),
+                          ),
                         ],
                         const Padding(
                           padding: EdgeInsets.fromLTRB(16, 10, 16, 4),
@@ -184,12 +212,14 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                             ),
                           ),
                         ),
-                        ...otherSubjects.map((subject) => _buildSubjectTile(
-                              context,
-                              subject,
-                              isCR,
-                              isLive: false,
-                            )),
+                        ...otherSubjects.map(
+                          (subject) => _buildSubjectTile(
+                            context,
+                            subject,
+                            isCR,
+                            isLive: false,
+                          ),
+                        ),
                       ],
                     ),
                   );
@@ -202,19 +232,24 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     );
   }
 
-  Widget _buildSubjectTile(BuildContext context, QueryDocumentSnapshot subject,
-      bool isCR, {required bool isLive}) {
+  Widget _buildSubjectTile(
+    BuildContext context,
+    QueryDocumentSnapshot subject,
+    bool isCR, {
+    required bool isLive,
+  }) {
     final subjectName = subject['name'];
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       elevation: 3,
       shadowColor: Colors.deepPurple.withOpacity(0.3),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 10,
+        ),
         title: Text(
           subjectName,
           style: const TextStyle(

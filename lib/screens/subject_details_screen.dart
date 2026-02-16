@@ -76,39 +76,13 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
           .doc(subjectId)
           .get();
 
-      String uniName = 'University';
-      String batchName = 'Batch';
-      String deptName = 'Department';
-      String subjectName = 'Subject';
-
-      if (univDoc.exists) {
-        final data = univDoc.data();
-        final val = data?['name'];
-        if (val is String && val.isNotEmpty) uniName = val;
-      }
-      if (batchDoc.exists) {
-        final data = batchDoc.data();
-        final val = data?['name'];
-        if (val is String && val.isNotEmpty) batchName = val;
-      }
-      if (deptDoc.exists) {
-        final data = deptDoc.data();
-        final val = data?['name'];
-        if (val is String && val.isNotEmpty) deptName = val;
-      }
-      if (subjDoc.exists) {
-        final data = subjDoc.data();
-        final val = data?['name'];
-        if (val is String && val.isNotEmpty) subjectName = val;
-      }
-
       return {
-        'university': uniName,
-        'batch': batchName,
-        'department': deptName,
-        'subject': subjectName,
+        'university': univDoc['name'] ?? 'University',
+        'batch': batchDoc['name'] ?? 'Batch',
+        'department': deptDoc['name'] ?? 'Department',
+        'subject': subjDoc['name'] ?? 'Subject',
       };
-    } catch (e) {
+    } catch (_) {
       return {
         'university': 'University',
         'batch': 'Batch',
@@ -120,53 +94,34 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
 
   /// 🔹 Get all rolls including extra
   Future<List<int>> getAllRolls() async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('universities')
-          .doc(universityId)
-          .collection('batches')
-          .doc(batch)
-          .collection('departments')
-          .doc(departmentId)
-          .collection('subjects')
-          .doc(subjectId)
-          .get();
+    final doc = await FirebaseFirestore.instance
+        .collection('universities')
+        .doc(universityId)
+        .collection('batches')
+        .doc(batch)
+        .collection('departments')
+        .doc(departmentId)
+        .collection('subjects')
+        .doc(subjectId)
+        .get();
 
-      if (!doc.exists) return <int>[];
-      final data = doc.data();
-      if (data == null) return <int>[];
+    int startRoll = doc['startRoll'];
+    int endRoll = doc['endRoll'];
+    List extra = doc['extraRolls'] ?? [];
 
-      final startVal = data['startRoll'];
-      final endVal = data['endRoll'];
-      final extrasVal = data['extraRolls'];
-
-      final int startRoll = (startVal is int)
-          ? startVal
-          : int.tryParse(startVal?.toString() ?? '') ?? 0;
-      final int endRoll = (endVal is int)
-          ? endVal
-          : int.tryParse(endVal?.toString() ?? '') ?? -1;
-      final List<int> extra = (extrasVal is List)
-          ? extrasVal
-                .map((e) => (e is int) ? e : int.tryParse(e.toString()) ?? 0)
-                .where((e) => e != 0)
-                .toList()
-          : <int>[];
-
-      if (endRoll < startRoll || startRoll == 0) return extra..sort();
-
-      final rolls = [for (int i = startRoll; i <= endRoll; i++) i];
-      rolls.addAll(extra);
-      rolls.sort();
-      return rolls;
-    } catch (e) {
-      return <int>[];
-    }
+    final rolls = [for (int i = startRoll; i <= endRoll; i++) i];
+    rolls.addAll(extra.cast<int>());
+    rolls.sort();
+    return rolls;
   }
 
   /// 🔹 Start a new attendance session
   Future<void> startAttendance(List<int> rolls) async {
     final attendanceMap = {for (var r in rolls) r.toString(): false};
+
+    // Get CR's current location to use as the center
+    final position = await FraudDetectionService.getCurrentLocation();
+
     await FirebaseFirestore.instance
         .collection('universities')
         .doc(universityId)
@@ -181,6 +136,9 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
           'date': DateTime.now(),
           'isActive': true,
           'attendance': attendanceMap,
+          // Save center from CR location if available
+          if (position != null) 'crCenterLat': position.latitude,
+          if (position != null) 'crCenterLon': position.longitude,
         });
   }
 
@@ -203,17 +161,19 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
   /// 🔹 Update attendance (Student & CR)
   Future<void> updateAttendance(String sessionId, int roll, bool value) async {
     try {
-      final macAddress = await FraudDetectionService.getDeviceMacAddress();
+      // Persist deviceId and user location with the attendance
+      final deviceId = await FraudDetectionService.getDeviceId();
       final position = await FraudDetectionService.getCurrentLocation();
-      final Map<String, dynamic> updateData = {
-        'attendance.${roll.toString()}': value,
-        'locationData.${roll.toString()}': {
-          'latitude': position?.latitude,
-          'longitude': position?.longitude,
-          'macAddress': macAddress,
-          'timestamp': Timestamp.now(),
-        },
+
+      final Map<String, dynamic> locPayload = {
+        'deviceId': deviceId,
+        'timestamp': Timestamp.now(),
       };
+      if (position != null) {
+        locPayload['latitude'] = position.latitude;
+        locPayload['longitude'] = position.longitude;
+      }
+
       await FirebaseFirestore.instance
           .collection('universities')
           .doc(universityId)
@@ -225,8 +185,27 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
           .doc(subjectId)
           .collection('attendanceSessions')
           .doc(sessionId)
-          .update(updateData);
-    } catch (e) {}
+          .update({
+            'attendance.${roll.toString()}': value,
+            'locationData.${roll.toString()}': locPayload,
+          });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Attendance ${value ? 'marked present' : 'marked absent'} for $roll${position == null ? ' (no location)' : ''}',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update attendance: $e')),
+        );
+      }
+    }
   }
 
   /// 🔹 Detect cheating for a session
@@ -267,7 +246,7 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
                 roll: int.parse(roll),
                 latitude: lat.toDouble(),
                 longitude: lon.toDouble(),
-                macAddress: mac ?? 'UNKNOWN',
+                deviceId: mac ?? 'UNKNOWN',
                 timestamp: loc['timestamp']?.toDate() ?? DateTime.now(),
               ),
             );

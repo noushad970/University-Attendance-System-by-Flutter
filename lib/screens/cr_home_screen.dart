@@ -17,22 +17,37 @@ class CRHomeScreen extends StatelessWidget {
   });
 
   Future<bool> isBatchCR() async {
-    final batchDoc = await FirebaseFirestore.instance
-        .collection('universities')
-        .doc(universityId)
-        .collection('batches')
-        .doc(batch)
-        .get();
-
-    int crRoll = batchDoc['crRoll'];
-    return crRoll == roll;
+    try {
+      final deptDoc = await FirebaseFirestore.instance
+          .collection('universities')
+          .doc(universityId)
+          .collection('batches')
+          .doc(batch)
+          .collection('departments')
+          .doc(departmentId)
+          .get();
+      if (!deptDoc.exists) return false;
+      final data = deptDoc.data();
+      if (data == null) return false;
+      final crVal = data['crRoll'];
+      final int? crRoll = (crVal is int)
+          ? crVal
+          : int.tryParse(crVal?.toString() ?? '');
+      return crRoll != null && crRoll == roll;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// ==========================
   /// Stylized Subject Card
   /// ==========================
-  Widget subjectCard(BuildContext context, String name, bool isCR,
-      VoidCallback onTap) {
+  Widget subjectCard(
+    BuildContext context,
+    String name,
+    bool isCR,
+    VoidCallback onTap,
+  ) {
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: const Duration(milliseconds: 500),
@@ -59,7 +74,8 @@ class CRHomeScreen extends StatelessWidget {
             decoration: BoxDecoration(
               gradient: isCR
                   ? LinearGradient(
-                      colors: [Colors.green.shade200, Colors.green.shade400])
+                      colors: [Colors.green.shade200, Colors.green.shade400],
+                    )
                   : null,
               borderRadius: BorderRadius.circular(16),
             ),
@@ -70,9 +86,10 @@ class CRHomeScreen extends StatelessWidget {
                   child: Text(
                     name,
                     style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: isCR ? Colors.white : Colors.black87),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: isCR ? Colors.white : Colors.black87,
+                    ),
                   ),
                 ),
                 Row(
@@ -80,17 +97,20 @@ class CRHomeScreen extends StatelessWidget {
                     Text(
                       isCR ? "CR" : "Student",
                       style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: isCR ? Colors.white : Colors.grey),
+                        fontWeight: FontWeight.bold,
+                        color: isCR ? Colors.white : Colors.grey,
+                      ),
                     ),
                     const SizedBox(width: 8),
                     Icon(
-                      isCR ? Icons.admin_panel_settings : Icons.arrow_forward_ios,
+                      isCR
+                          ? Icons.admin_panel_settings
+                          : Icons.arrow_forward_ios,
                       color: isCR ? Colors.white : Colors.grey,
                       size: 20,
-                    )
+                    ),
                   ],
-                )
+                ),
               ],
             ),
           ),
@@ -114,11 +134,17 @@ class CRHomeScreen extends StatelessWidget {
       body: FutureBuilder<bool>(
         future: isBatchCR(),
         builder: (context, crSnapshot) {
-          if (!crSnapshot.hasData) {
+          if (crSnapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
+          if (crSnapshot.hasError) {
+            return Center(child: Text('Failed to load CR status'));
+          }
+          if (!crSnapshot.hasData) {
+            return const Center(child: Text('No data'));
+          }
 
-          bool isCR = crSnapshot.data!;
+          final bool isCR = crSnapshot.data!;
 
           return StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
@@ -132,13 +158,13 @@ class CRHomeScreen extends StatelessWidget {
                 .orderBy('createdAt')
                 .snapshots(),
             builder: (context, snapshot) {
-              if (!snapshot.hasData) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
-
-              final subjects = snapshot.data!.docs;
-
-              if (subjects.isEmpty) {
+              if (snapshot.hasError) {
+                return Center(child: Text('Failed to load subjects'));
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                 return const Center(
                   child: Text(
                     "No subjects added yet",
@@ -147,26 +173,33 @@ class CRHomeScreen extends StatelessWidget {
                 );
               }
 
+              final subjects = snapshot.data!.docs;
+
               return ListView.builder(
                 physics: const BouncingScrollPhysics(),
                 itemCount: subjects.length,
                 itemBuilder: (context, index) {
                   final subject = subjects[index];
-                  return subjectCard(context, subject['name'], isCR, () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => SubjectDetailsScreen(
-                          universityId: universityId,
-                          departmentId: departmentId,
-                          batch: batch,
-                          subjectId: subject.id,
-                          role: isCR ? "CR" : "Student",
-                          userRoll: roll,
+                  return subjectCard(
+                    context,
+                    subject['name'] ?? 'Subject',
+                    isCR,
+                    () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => SubjectDetailsScreen(
+                            universityId: universityId,
+                            departmentId: departmentId,
+                            batch: batch,
+                            subjectId: subject.id,
+                            role: isCR ? "CR" : "Student",
+                            userRoll: roll,
+                          ),
                         ),
-                      ),
-                    );
-                  });
+                      );
+                    },
+                  );
                 },
               );
             },
