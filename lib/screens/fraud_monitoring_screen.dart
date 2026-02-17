@@ -411,14 +411,29 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
       );
     });
 
+    // If no markers could be added, show a simple message
+    if (markers.isEmpty) {
+      return const Center(child: Text('No markers to display'));
+    }
+
+    // Fallback camera target: first valid point; if unavailable, use 0,0
+    final LatLng fallbackTarget = validLocations.values.isNotEmpty
+        ? validLocations.values.first
+        : const LatLng(0, 0);
+
+    final bool centerLooksInvalid =
+        (centerLat == 0.0 && centerLon == 0.0) ||
+        centerLat.isNaN ||
+        centerLon.isNaN;
+    final LatLng cameraTarget = centerLooksInvalid
+        ? fallbackTarget
+        : LatLng(centerLat, centerLon);
+
     return GoogleMap(
       onMapCreated: (controller) {
         mapController = controller;
       },
-      initialCameraPosition: CameraPosition(
-        target: LatLng(centerLat, centerLon),
-        zoom: 18,
-      ),
+      initialCameraPosition: CameraPosition(target: cameraTarget, zoom: 18),
       markers: markers,
       zoomControlsEnabled: true,
     );
