@@ -308,7 +308,7 @@ class _UniversityAdminPageState extends State<UniversityAdminPage> {
                         children: [
                           Expanded(
                             child: DropdownButtonFormField<String>(
-                              value: selectedBatchIdForDept,
+                              initialValue: selectedBatchIdForDept,
                               items: batchItems,
                               decoration: const InputDecoration(
                                 labelText: 'Select Batch',
@@ -364,7 +364,7 @@ class _UniversityAdminPageState extends State<UniversityAdminPage> {
                             return ListTile(
                               title: Text(d['name'] ?? '1'),
                               subtitle: Text(
-                                'CR Roll: ' + (d['crRoll']?.toString() ?? '1'),
+                                'CR Roll: ${d['crRoll']?.toString() ?? '1'}',
                               ),
                               trailing: IconButton(
                                 icon: const Icon(Icons.delete),
@@ -401,7 +401,7 @@ class _UniversityAdminPageState extends State<UniversityAdminPage> {
                             children: [
                               Expanded(
                                 child: DropdownButtonFormField<String>(
-                                  value: selectedDeptIdForSubject,
+                                  initialValue: selectedDeptIdForSubject,
                                   items: items,
                                   decoration: const InputDecoration(
                                     labelText: 'Select Department',
@@ -470,8 +470,9 @@ class _UniversityAdminPageState extends State<UniversityAdminPage> {
                     Builder(
                       builder: (context) {
                         final ids = selectedDeptIdForSubject!.split('|');
-                        if (ids.length < 2 || ids[1].isEmpty)
+                        if (ids.length < 2 || ids[1].isEmpty) {
                           return const SizedBox();
+                        }
                         final batchId = ids[0];
                         final depId = ids[1];
                         return StreamBuilder<QuerySnapshot>(
@@ -494,7 +495,7 @@ class _UniversityAdminPageState extends State<UniversityAdminPage> {
                                     (s['extraRolls'] ?? []) as List<dynamic>;
                                 final extrasStr = extras.isEmpty
                                     ? ''
-                                    : (' • extras: ' + extras.join(','));
+                                    : (' • extras: ${extras.join(',')}');
                                 return ListTile(
                                   title: Text(
                                     (s['name'] ?? '1') +

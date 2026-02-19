@@ -271,7 +271,7 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
               builder: (context, snapshot) {
                 if (!snapshot.hasData) return const SizedBox();
                 return DropdownButtonFormField<String?>(
-                  value: selectedUniversity,
+                  initialValue: selectedUniversity,
                   decoration: InputDecoration(
                     labelText: "Select University",
                     filled: true,
@@ -328,7 +328,7 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) return const SizedBox();
                   return DropdownButtonFormField<String?>(
-                    value: selectedBatch,
+                    initialValue: selectedBatch,
                     decoration: InputDecoration(
                       labelText: "Select Batch",
                       filled: true,
@@ -392,7 +392,7 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) return const SizedBox();
                   return DropdownButtonFormField<String?>(
-                    value: selectedDepartment,
+                    initialValue: selectedDepartment,
                     decoration: InputDecoration(
                       labelText: "Select Department",
                       filled: true,

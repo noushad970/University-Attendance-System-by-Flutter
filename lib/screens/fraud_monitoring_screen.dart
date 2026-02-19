@@ -26,7 +26,6 @@ class FraudMonitoringScreen extends StatefulWidget {
 class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
   CheatDetectionResult? detectionResult;
   List<int> manuallyRemovedStudents = [];
-  GoogleMapController? mapController;
   Map<int, Map<String, dynamic>> allLocationData = {};
 
   @override
@@ -67,7 +66,7 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
       print('Attendance data keys: ${attendanceData.keys}');
 
       // Store all location data for later access
-      this.allLocationData = <int, Map<String, dynamic>>{};
+      allLocationData = <int, Map<String, dynamic>>{};
 
       final records = <AttendanceRecord>[];
       final deviceMap = <String, List<int>>{};
@@ -79,7 +78,7 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
         if (locationData.containsKey(roll)) {
           final locData = locationData[roll];
           if (locData is Map) {
-            this.allLocationData[int.parse(roll)] = Map<String, dynamic>.from(
+            allLocationData[int.parse(roll)] = Map<String, dynamic>.from(
               locData,
             );
 
@@ -283,13 +282,12 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
               ),
             )
           : DefaultTabController(
-              length: 4,
+              length: 3,
               child: Column(
                 children: [
                   /// TAB BAR
                   const TabBar(
                     tabs: [
-                      Tab(text: "📍 Location Map"),
                       Tab(text: "📊 Scatter Plot"),
                       Tab(text: "🚨 Cheaters List"),
                       Tab(text: "📱 MAC Address"),
@@ -300,9 +298,6 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
                   Expanded(
                     child: TabBarView(
                       children: [
-                        /// MAP TAB
-                        _buildMapTab(),
-
                         /// SCATTER PLOT TAB
                         _buildScatterTab(),
 
@@ -338,104 +333,6 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
                 ],
               ),
             ),
-    );
-  }
-
-  Widget _buildMapTab() {
-    final validLocations = <int, LatLng>{};
-    for (final entry in allLocationData.entries) {
-      final locData = entry.value;
-      final lat = locData['latitude'];
-      final lon = locData['longitude'];
-      if (lat is num && lon is num) {
-        validLocations[entry.key] = LatLng(lat.toDouble(), lon.toDouble());
-      }
-    }
-
-    if (validLocations.isEmpty) {
-      return const Center(child: Text("No location data available"));
-    }
-
-    final allDistances =
-        detectionResult?.locationStats['allDistances'] as Map<int, double>? ??
-        {};
-
-    // Use center from detection result if present
-    final centerLat =
-        (detectionResult?.locationStats['centerLatitude'] as num?)
-            ?.toDouble() ??
-        (validLocations.values
-                .cast<LatLng>()
-                .map((c) => c.latitude)
-                .reduce((a, b) => a + b) /
-            validLocations.values.length);
-    final centerLon =
-        (detectionResult?.locationStats['centerLongitude'] as num?)
-            ?.toDouble() ??
-        (validLocations.values
-                .cast<LatLng>()
-                .map((c) => c.longitude)
-                .reduce((a, b) => a + b) /
-            validLocations.values.length);
-
-    final markers = <Marker>{};
-
-    // Add center marker
-    markers.add(
-      Marker(
-        markerId: const MarkerId('center'),
-        position: LatLng(centerLat, centerLon),
-        infoWindow: const InfoWindow(title: '📍 Class Center Location'),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-      ),
-    );
-
-    // Add student markers
-    validLocations.forEach((roll, position) {
-      final isCheater =
-          detectionResult?.outlierLocationRolls.contains(roll) ?? false;
-      final distance = allDistances[roll];
-      final snippet = distance == null
-          ? 'Location received'
-          : '${(distance / 1000).toStringAsFixed(2)} km away';
-
-      markers.add(
-        Marker(
-          markerId: MarkerId('student_$roll'),
-          position: position,
-          infoWindow: InfoWindow(title: 'Student ID: $roll', snippet: snippet),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            isCheater ? BitmapDescriptor.hueRed : BitmapDescriptor.hueBlue,
-          ),
-        ),
-      );
-    });
-
-    // If no markers could be added, show a simple message
-    if (markers.isEmpty) {
-      return const Center(child: Text('No markers to display'));
-    }
-
-    // Fallback camera target: first valid point; if unavailable, use 0,0
-    final LatLng fallbackTarget = validLocations.values.isNotEmpty
-        ? validLocations.values.first
-        : const LatLng(0, 0);
-
-    final bool centerLooksInvalid =
-        (centerLat == 0.0 && centerLon == 0.0) ||
-        centerLat.isNaN ||
-        centerLon.isNaN;
-    final LatLng cameraTarget = centerLooksInvalid
-        ? fallbackTarget
-        : LatLng(centerLat, centerLon);
-
-    return GoogleMap(
-      onMapCreated: (controller) {
-        mapController = controller;
-      },
-      initialCameraPosition: CameraPosition(target: cameraTarget, zoom: 18),
-      markers: markers,
-      zoomControlsEnabled: true,
     );
   }
 
@@ -824,10 +721,11 @@ class _ScatterPainter extends CustomPainter {
     points.forEach((roll, latLng) {
       final pt = toCanvas(latLng);
       Paint paint;
-      if (outliers.contains(roll))
+      if (outliers.contains(roll)) {
         paint = outlierPaint;
-      else
+      } else {
         paint = presentPaint;
+      }
       canvas.drawCircle(pt, 4, paint);
     });
 

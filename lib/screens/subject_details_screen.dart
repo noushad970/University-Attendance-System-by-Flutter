@@ -33,6 +33,9 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
   late String role;
   late int userRoll;
 
+  // Show full attendance sheet UI (CR by default). Students see buttons first.
+  bool _showAttendanceSheet = false;
+
   @override
   void initState() {
     super.initState();
@@ -42,6 +45,8 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
     subjectId = widget.subjectId;
     role = widget.role;
     userRoll = widget.userRoll;
+
+    _showAttendanceSheet = role == 'CR';
   }
 
   /// 🔹 Fetch header info: university, batch, department, subject
@@ -236,8 +241,9 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
         if (isPresent && locationData.containsKey(roll)) {
           final loc = locationData[roll];
           final mac = loc['macAddress'];
-          if (mac is String && mac.isNotEmpty)
+          if (mac is String && mac.isNotEmpty) {
             macMap.putIfAbsent(mac, () => []).add(int.parse(roll));
+          }
           final lat = loc['latitude'];
           final lon = loc['longitude'];
           if (lat is num && lon is num) {
@@ -269,6 +275,68 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
     } catch (e) {
       return null;
     }
+  }
+
+  /// Student: Give attendance if a live session exists
+  Future<void> _giveAttendance() async {
+    try {
+      // First verify student ID exists in this subject
+      final rolls = await getAllRolls();
+      if (!rolls.contains(userRoll)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Your student ID is not registered for this subject',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      final liveQuery = await FirebaseFirestore.instance
+          .collection('universities')
+          .doc(universityId)
+          .collection('batches')
+          .doc(batch)
+          .collection('departments')
+          .doc(departmentId)
+          .collection('subjects')
+          .doc(subjectId)
+          .collection('attendanceSessions')
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .get();
+
+      if (liveQuery.docs.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No live session available')),
+          );
+        }
+        return;
+      }
+
+      final sessionId = liveQuery.docs.first.id;
+      await updateAttendance(sessionId, userRoll, true);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Attendance submitted')));
+      }
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error giving attendance: $e')));
+    }
+  }
+
+  void _showAttendancePage() {
+    setState(() {
+      _showAttendanceSheet = true;
+    });
   }
 
   @override
@@ -341,6 +409,27 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
                     },
                   ),
 
+                if (role == "Student" && !_showAttendanceSheet) ...[
+                  // Student view: Give Attendance & View Sheet buttons
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                    ),
+                    icon: const Icon(Icons.check),
+                    label: const Text("Give Attendance"),
+                    onPressed: _giveAttendance,
+                  ),
+                  const SizedBox(height: 10),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                    ),
+                    icon: const Icon(Icons.visibility),
+                    label: const Text("View Attendance Sheet"),
+                    onPressed: _showAttendancePage,
+                  ),
+                ],
+
                 const SizedBox(height: 10),
 
                 // 🔴 Live Attendance Controls
@@ -359,8 +448,9 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
                       .limit(1)
                       .snapshots(),
                   builder: (context, liveSnap) {
-                    if (!liveSnap.hasData || liveSnap.data!.docs.isEmpty)
+                    if (!liveSnap.hasData || liveSnap.data!.docs.isEmpty) {
                       return const SizedBox();
+                    }
                     final sessionId = liveSnap.data!.docs.first.id;
 
                     return Column(
@@ -438,131 +528,140 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
                 const SizedBox(height: 10),
 
                 // 📊 Attendance Table
-                SizedBox(
-                  height: 500,
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('universities')
-                        .doc(universityId)
-                        .collection('batches')
-                        .doc(batch)
-                        .collection('departments')
-                        .doc(departmentId)
-                        .collection('subjects')
-                        .doc(subjectId)
-                        .collection('attendanceSessions')
-                        .orderBy('date')
-                        .snapshots(),
-                    builder: (context, sessionSnap) {
-                      if (!sessionSnap.hasData)
-                        return const Center(child: CircularProgressIndicator());
-                      final sessions = sessionSnap.data!.docs;
+                if (_showAttendanceSheet)
+                  SizedBox(
+                    height: 500,
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('universities')
+                          .doc(universityId)
+                          .collection('batches')
+                          .doc(batch)
+                          .collection('departments')
+                          .doc(departmentId)
+                          .collection('subjects')
+                          .doc(subjectId)
+                          .collection('attendanceSessions')
+                          .orderBy('date')
+                          .snapshots(),
+                      builder: (context, sessionSnap) {
+                        if (!sessionSnap.hasData) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        }
+                        final sessions = sessionSnap.data!.docs;
 
-                      return FutureBuilder<List<int>>(
-                        future: getAllRolls(),
-                        builder: (context, rollSnap) {
-                          if (!rollSnap.hasData)
-                            return const Center(
-                              child: CircularProgressIndicator(),
-                            );
-                          final rolls = rollSnap.data!;
+                        return FutureBuilder<List<int>>(
+                          future: getAllRolls(),
+                          builder: (context, rollSnap) {
+                            if (!rollSnap.hasData) {
+                              return const Center(
+                                child: CircularProgressIndicator(),
+                              );
+                            }
+                            final rolls = rollSnap.data!;
 
-                          return SingleChildScrollView(
-                            scrollDirection: Axis.vertical,
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: DataTable(
-                                columnSpacing: 20,
-                                dataRowMinHeight: 60,
-                                dataRowMaxHeight: 80,
-                                columns: [
-                                  const DataColumn(
-                                    label: Text(
-                                      "Roll No",
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  ...sessions.map((s) {
-                                    final date = (s['date'] as Timestamp)
-                                        .toDate();
-                                    return DataColumn(
+                            return SingleChildScrollView(
+                              scrollDirection: Axis.vertical,
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: DataTable(
+                                  columnSpacing: 20,
+                                  dataRowMinHeight: 60,
+                                  dataRowMaxHeight: 80,
+                                  columns: [
+                                    const DataColumn(
                                       label: Text(
-                                        "${date.day}-${date.month}-${date.year}",
-                                        style: const TextStyle(
+                                        "Roll No",
+                                        style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
+                                    ),
+                                    ...sessions.map((s) {
+                                      final date = (s['date'] as Timestamp)
+                                          .toDate();
+                                      return DataColumn(
+                                        label: Text(
+                                          "${date.day}-${date.month}-${date.year}",
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                  rows: rolls.map((roll) {
+                                    return DataRow(
+                                      cells: [
+                                        DataCell(Text(roll.toString())),
+                                        ...sessions.map((s) {
+                                          final attendance =
+                                              s['attendance'] ?? {};
+                                          final isPresent =
+                                              attendance[roll.toString()] ??
+                                              false;
+                                          final isActive =
+                                              s['isActive'] ?? false;
+                                          return DataCell(
+                                            isActive
+                                                ? Column(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .center,
+                                                    children: [
+                                                      Text(
+                                                        roll.toString(),
+                                                        style: const TextStyle(
+                                                          fontSize: 9,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color:
+                                                              Colors.deepPurple,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 2),
+                                                      Transform.scale(
+                                                        scale: 0.9,
+                                                        child: Checkbox(
+                                                          value: isPresent,
+                                                          onChanged: (val) async {
+                                                            if (role ==
+                                                                    "Student" &&
+                                                                roll !=
+                                                                    userRoll) {
+                                                              return;
+                                                            }
+                                                            await updateAttendance(
+                                                              s.id,
+                                                              roll,
+                                                              !isPresent,
+                                                            );
+                                                          },
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  )
+                                                : Checkbox(
+                                                    value: isPresent,
+                                                    onChanged: null,
+                                                  ),
+                                          );
+                                        }),
+                                      ],
                                     );
                                   }).toList(),
-                                ],
-                                rows: rolls.map((roll) {
-                                  return DataRow(
-                                    cells: [
-                                      DataCell(Text(roll.toString())),
-                                      ...sessions.map((s) {
-                                        final attendance =
-                                            s['attendance'] ?? {};
-                                        final isPresent =
-                                            attendance[roll.toString()] ??
-                                            false;
-                                        final isActive = s['isActive'] ?? false;
-                                        return DataCell(
-                                          isActive
-                                              ? Column(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    Text(
-                                                      roll.toString(),
-                                                      style: const TextStyle(
-                                                        fontSize: 9,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        color:
-                                                            Colors.deepPurple,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 2),
-                                                    Transform.scale(
-                                                      scale: 0.9,
-                                                      child: Checkbox(
-                                                        value: isPresent,
-                                                        onChanged: (val) async {
-                                                          if (role ==
-                                                                  "Student" &&
-                                                              roll != userRoll)
-                                                            return;
-                                                          await updateAttendance(
-                                                            s.id,
-                                                            roll,
-                                                            !isPresent,
-                                                          );
-                                                        },
-                                                      ),
-                                                    ),
-                                                  ],
-                                                )
-                                              : Checkbox(
-                                                  value: isPresent,
-                                                  onChanged: null,
-                                                ),
-                                        );
-                                      }).toList(),
-                                    ],
-                                  );
-                                }).toList(),
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                      );
-                    },
+                            );
+                          },
+                        );
+                      },
+                    ),
                   ),
-                ),
               ],
             ),
           );
