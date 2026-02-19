@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:pdf/pdf.dart';
+import 'package:printing/printing.dart';
 import '../services/fraud_detection_service.dart';
 import 'fraud_monitoring_screen.dart';
 
@@ -122,29 +125,67 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
 
   /// 🔹 Start a new attendance session
   Future<void> startAttendance(List<int> rolls) async {
-    final attendanceMap = {for (var r in rolls) r.toString(): false};
+    try {
+      // Ensure there is no active session already for this subject
+      final activeQuery = await FirebaseFirestore.instance
+          .collection('universities')
+          .doc(universityId)
+          .collection('batches')
+          .doc(batch)
+          .collection('departments')
+          .doc(departmentId)
+          .collection('subjects')
+          .doc(subjectId)
+          .collection('attendanceSessions')
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .get();
 
-    // Get CR's current location to use as the center
-    final position = await FraudDetectionService.getCurrentLocation();
+      if (activeQuery.docs.isNotEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'An active attendance session already exists. Please close it before starting a new one.',
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
 
-    await FirebaseFirestore.instance
-        .collection('universities')
-        .doc(universityId)
-        .collection('batches')
-        .doc(batch)
-        .collection('departments')
-        .doc(departmentId)
-        .collection('subjects')
-        .doc(subjectId)
-        .collection('attendanceSessions')
-        .add({
-          'date': DateTime.now(),
-          'isActive': true,
-          'attendance': attendanceMap,
-          // Save center from CR location if available
-          if (position != null) 'crCenterLat': position.latitude,
-          if (position != null) 'crCenterLon': position.longitude,
-        });
+      // If no active session, proceed to create one
+      final attendanceMap = {for (var r in rolls) r.toString(): false};
+
+      // Get CR's current location to use as the center
+      final position = await FraudDetectionService.getCurrentLocation();
+
+      await FirebaseFirestore.instance
+          .collection('universities')
+          .doc(universityId)
+          .collection('batches')
+          .doc(batch)
+          .collection('departments')
+          .doc(departmentId)
+          .collection('subjects')
+          .doc(subjectId)
+          .collection('attendanceSessions')
+          .add({
+            'date': DateTime.now(),
+            'isActive': true,
+            'attendance': attendanceMap,
+            // Save center from CR location if available
+            if (position != null) 'crCenterLat': position.latitude,
+            if (position != null) 'crCenterLon': position.longitude,
+          });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to start attendance: $e')),
+        );
+      }
+    }
   }
 
   /// 🔹 Close attendance session
@@ -339,6 +380,103 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
     });
   }
 
+  /// 🔹 Print attendance sheet as PDF (CR only)
+  Future<void> _printAttendancePdf() async {
+    try {
+      // Fetch all sessions for this subject
+      final sessionsSnap = await FirebaseFirestore.instance
+          .collection('universities')
+          .doc(universityId)
+          .collection('batches')
+          .doc(batch)
+          .collection('departments')
+          .doc(departmentId)
+          .collection('subjects')
+          .doc(subjectId)
+          .collection('attendanceSessions')
+          .orderBy('date')
+          .get();
+
+      final sessions = sessionsSnap.docs;
+      if (sessions.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No attendance sessions available')),
+          );
+        }
+        return;
+      }
+
+      final rolls = await getAllRolls();
+      final presentCount = <int, int>{for (var r in rolls) r: 0};
+
+      for (final s in sessions) {
+        final attendance = s['attendance'] as Map<String, dynamic>? ?? {};
+        for (final r in rolls) {
+          if (attendance[r.toString()] == true) {
+            presentCount[r] = (presentCount[r] ?? 0) + 1;
+          }
+        }
+      }
+
+      final total = sessions.length;
+
+      // Build PDF
+      final pdf = pw.Document();
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context ctx) {
+            return [
+              pw.Header(
+                level: 0,
+                child: pw.Text(
+                  'Attendance Report',
+                  style: pw.TextStyle(
+                    fontSize: 18,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ),
+              pw.Text('Subject: $subjectId'),
+              pw.Text('Total sessions: $total'),
+              pw.SizedBox(height: 10),
+              pw.Table.fromTextArray(
+                headers: [
+                  'Student ID',
+                  'Present',
+                  'Total Sessions',
+                  'Percentage',
+                ],
+                data: rolls.map((r) {
+                  final present = presentCount[r] ?? 0;
+                  final pct = total > 0 ? (present / total) * 100 : 0.0;
+                  return [
+                    r.toString(),
+                    present.toString(),
+                    total.toString(),
+                    '${pct.toStringAsFixed(2)}%',
+                  ];
+                }).toList(),
+              ),
+              pw.SizedBox(height: 12),
+              pw.Text('Generated: ${DateTime.now()}'),
+            ];
+          },
+        ),
+      );
+
+      // Send to printer / share dialog
+      await Printing.layoutPdf(onLayout: (format) async => pdf.save());
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to generate PDF: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -528,7 +666,20 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
                 const SizedBox(height: 10),
 
                 // 📊 Attendance Table
-                if (_showAttendanceSheet)
+                if (_showAttendanceSheet) ...[
+                  if (role == 'CR')
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepPurple,
+                        ),
+                        icon: const Icon(Icons.print),
+                        label: const Text('Print Attendance PDF'),
+                        onPressed: _printAttendancePdf,
+                      ),
+                    ),
+
                   SizedBox(
                     height: 500,
                     child: StreamBuilder<QuerySnapshot>(
@@ -662,6 +813,7 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
                       },
                     ),
                   ),
+                ],
               ],
             ),
           );

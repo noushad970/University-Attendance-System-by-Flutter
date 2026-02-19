@@ -8,8 +8,18 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Load signing properties for release build (create android/key.properties with your keystore info)
+import java.util.Properties
+import java.io.FileInputStream
+
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
 android {
-    namespace = "com.example.attendance_app"
+    namespace = "com.nsdtechnologies.attendancetoday"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -24,7 +34,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.attendance_app"
+        applicationId = "com.nsdtechnologies.attendancetoday"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -37,11 +47,23 @@ android {
         ))
     }
 
+    signingConfigs {
+        create("release") {
+            // Values are read from android/key.properties
+            val storeFilePath = keystoreProperties.getProperty("storeFile")
+            if (storeFilePath != null && storeFilePath.isNotEmpty()) {
+                storeFile = file(storeFilePath)
+            }
+            storePassword = keystoreProperties.getProperty("storePassword")
+            keyAlias = keystoreProperties.getProperty("keyAlias")
+            keyPassword = keystoreProperties.getProperty("keyPassword")
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Use release signing config if present
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 }
@@ -49,3 +71,6 @@ android {
 flutter {
     source = "../.."
 }
+
+// Update applicationId
+// Note: applicationId is configured in defaultConfig block above; ensure it matches the namespace

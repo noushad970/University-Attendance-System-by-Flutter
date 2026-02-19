@@ -43,6 +43,8 @@ dependencies:
   device_info_plus: ^9.1.0
   shared_preferences: ^2.2.2
   google_maps_flutter: ^2.14.2
+  pdf: ^3.10.1
+  printing: ^5.10.0
 
 dev_dependencies:
   flutter_test:

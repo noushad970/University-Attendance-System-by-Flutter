@@ -12,7 +12,12 @@
           "package_name": "com.example.attendance_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "198170023835-hstk39vhr46eqfackng2bbppqt36h8vr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCybF34khwAofbDy9VGkbTyMVYCdMBzNKA"
@@ -20,7 +25,55 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "198170023835-hstk39vhr46eqfackng2bbppqt36h8vr.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "198170023835-7l5poi77qgkp768vcit5ih72c72m66pp.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.attendanceApp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:198170023835:android:051c5794e06e0936cb733e",
+        "android_client_info": {
+          "package_name": "com.nsdtechnologies.attendancetoday"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "198170023835-hstk39vhr46eqfackng2bbppqt36h8vr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCybF34khwAofbDy9VGkbTyMVYCdMBzNKA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "198170023835-hstk39vhr46eqfackng2bbppqt36h8vr.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "198170023835-7l5poi77qgkp768vcit5ih72c72m66pp.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.attendanceApp"
+              }
+            }
+          ]
         }
       }
     }
