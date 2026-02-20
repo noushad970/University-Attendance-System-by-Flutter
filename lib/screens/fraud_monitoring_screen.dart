@@ -754,8 +754,7 @@ class _ScatterPainter extends CustomPainter {
 class _LegendDot extends StatelessWidget {
   final Color color;
   final String label;
-  const _LegendDot({Key? key, required this.color, required this.label})
-    : super(key: key);
+  const _LegendDot({super.key, required this.color, required this.label});
   @override
   Widget build(BuildContext context) {
     return Row(

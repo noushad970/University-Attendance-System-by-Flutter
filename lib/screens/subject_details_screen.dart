@@ -367,10 +367,11 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
         ).showSnackBar(const SnackBar(content: Text('Attendance submitted')));
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error giving attendance: $e')));
+      }
     }
   }
 
