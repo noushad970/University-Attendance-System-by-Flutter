@@ -1,0 +1,61 @@
+Welcome to Attendance Today — a simple and secure attendance system for universities.
+
+In this demo you'll see three roles: University Admin, Class Representative, and Student, and learn how to create sessions, monitor fraud, and print reports.
+
+--- University Admin ---
+
+[Show Admin signup] When a University Admin signs up, they create their single university. This Admin can only create and manage that one university.
+
+[Show Admin dashboard for that university] On the Admin dashboard you manage everything for your university: batches, departments, and subjects tied to this institution.
+
+[Tap Create Batch] Create a batch for an intake or year — batches group students and subjects within your university.
+
+[Create Department] Add departments inside a batch — for example Computer Science or Mathematics. These belong to your university only.
+
+[Create Subject] Create subjects inside a department. Enter the subject name, code, and assign a Class Representative or instructor for that subject.
+
+[Assign CR] Use Manage Users to assign or remove CRs for subjects. Assigned CRs can start attendance sessions for their classes.
+
+[Open University Reports] Open university-level reports to view attendance statistics and export CSV or PDF summaries for auditing within your university.
+
+[Open Settings] From Settings, configure policies and review fraud summaries across subjects in your university.
+
+--- Class Representative (CR) ---
+
+[Switch to CR, open Subject] Now, log in as a Class Rep and select a subject.
+
+[Start Attendance] To start attendance, tap Start Session. The app asks you to share your current location — that becomes the session center used for fraud detection.
+
+[Show live session screen] While the session is active, students mark attendance. Close the session when class ends.
+
+[Print PDF] CRs can generate a printable attendance sheet showing each student’s total presences and attendance percentage.
+
+--- Student Flow ---
+
+[Student view Give Attendance] Students open the subject, tap Give Attendance, and confirm. The app records device identity and location with a timestamp.
+
+[View Attendance Sheet] Students can view their attendance history and percentage for the subject.
+
+--- Fraud Monitoring ---
+
+[Open Fraud Monitoring screen] Open Fraud Monitoring to investigate suspicious entries. There are three views: Scatter Plot, Cheaters List, and Device Table.
+
+[Show Scatter Plot] The Scatter Plot displays student locations relative to the CR center. Outliers are highlighted.
+
+[Show Cheaters List] The Cheaters List flags students outside the allowed radius or using duplicate devices.
+
+[Show Device Table] The Device Table groups attendance by device ID so you can spot multiple rolls using the same device.
+
+--- How Detection Works (brief) ---
+
+Detection uses two methods: distance from the CR-provided center and duplicate device ID detection. The app records location and a unique device ID when attendance is given.
+
+--- Publishing & Final Steps ---
+
+[Show app icon/Play Console] To publish, set the package name, generate a release keystore, register the package in Firebase, and build a signed AAB for the Play Console.
+
+[Show app icon] Generate launcher icons from your logo and remove debug messages for production.
+
+--- Outro ---
+
+[Show logo and CTA] Thanks for watching. Try Attendance Today to simplify attendance management and ensure fair exams. For setup help or a walkthrough, check the documentation or contact the development team.
