@@ -127,7 +127,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         actions: [
           IconButton(
             tooltip: "Refresh",
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: () {
               setState(() {
                 _refreshTick++;
@@ -136,7 +136,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           ),
           IconButton(
             tooltip: 'Logout',
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: () async {
               try {
                 await FirebaseAuth.instance.signOut();

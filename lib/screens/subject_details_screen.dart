@@ -791,8 +791,11 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.deepPurple,
                         ),
-                        icon: const Icon(Icons.print),
-                        label: const Text('Print Attendance PDF'),
+                        icon: const Icon(Icons.print, color: Colors.white),
+                        label: const Text(
+                          'Print Attendance PDF',
+                          style: TextStyle(color: Colors.white),
+                        ),
                         onPressed: _printAttendancePdf,
                       ),
                     ),

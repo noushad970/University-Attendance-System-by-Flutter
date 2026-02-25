@@ -165,7 +165,7 @@ class CRHomeScreen extends StatelessWidget {
         actions: [
           IconButton(
             tooltip: 'Logout',
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: () async {
               try {
                 await FirebaseAuth.instance.signOut();
