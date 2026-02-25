@@ -18,6 +18,10 @@ class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
   final rollController = TextEditingController();
   final passwordController = TextEditingController();
+  List<DropdownMenuItem<String>> _universityItems = [];
+  String? _selectedUniversityId;
+  final List<String> _roles = ['Admin', 'University Admin', 'CR', 'Student'];
+  String? _selectedRole;
 
   bool isLoading = false;
   bool isAutoLoginInProgress = false;
@@ -38,6 +42,9 @@ class _LoginScreenState extends State<LoginScreen>
       curve: Curves.easeInOut,
     );
     _animationController.forward();
+
+    // load universities for selection
+    _loadUniversities();
 
     _tryAutoLogin();
   }
@@ -61,6 +68,22 @@ class _LoginScreenState extends State<LoginScreen>
       return;
     }
 
+    if (_selectedRole == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please select a role')));
+      return;
+    }
+
+    if (!(_selectedRole == 'Admin') &&
+        !(_selectedRole == 'Admin (Global)') &&
+        _selectedUniversityId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select your University')),
+      );
+      return;
+    }
+
     await _loginWithCredentials(roll, password, isAuto: false);
   }
 
@@ -68,15 +91,22 @@ class _LoginScreenState extends State<LoginScreen>
     final prefs = await SharedPreferences.getInstance();
     final savedRoll = prefs.getString('saved_roll');
     final savedPassword = prefs.getString('saved_password');
+    final savedRole = prefs.getString('saved_role');
+    final savedUniversity = prefs.getString('saved_university');
 
-    if (savedRoll == null || savedPassword == null) return;
+    if (savedRoll == null || savedPassword == null || savedRole == null) return;
 
     if (!mounted) return;
     setState(() => isAutoLoginInProgress = true);
 
     rollController.text = savedRoll;
     passwordController.text = savedPassword;
+    _selectedRole = savedRole;
+    _selectedUniversityId = savedUniversity;
 
+    // Attempt auto-login using saved credentials (silent)
+    await Future.delayed(const Duration(milliseconds: 200));
+    if (!mounted) return;
     await _loginWithCredentials(savedRoll, savedPassword, isAuto: true);
 
     if (mounted) {
@@ -119,10 +149,89 @@ class _LoginScreenState extends State<LoginScreen>
         return;
       }
 
-      await _saveLogin(roll, password);
-
+      // Validate selected role (user must choose role on login)
       final rawRole = doc['role'];
       final role = (rawRole is String) ? rawRole.trim() : rawRole.toString();
+      if (_selectedRole == null) {
+        if (!isAuto)
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Please select a role')));
+        return;
+      }
+      // Normalize checks: Admin may be stored as 'Admin' or 'Admin (Global)'
+      if (_selectedRole == 'Admin') {
+        if (!(role == 'Admin' || role == 'Admin (Global)')) {
+          if (!isAuto)
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Selected role does not match account'),
+              ),
+            );
+          await _clearSavedLogin();
+          return;
+        }
+      } else if (_selectedRole == 'University Admin') {
+        if (!(role.toLowerCase().contains('university'))) {
+          if (!isAuto)
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Selected role does not match account'),
+              ),
+            );
+          await _clearSavedLogin();
+          return;
+        }
+      } else if (_selectedRole == 'CR') {
+        if (role != 'CR') {
+          if (!isAuto)
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Selected role does not match account'),
+              ),
+            );
+          await _clearSavedLogin();
+          return;
+        }
+      } else if (_selectedRole == 'Student') {
+        if (role != 'Student') {
+          if (!isAuto)
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Selected role does not match account'),
+              ),
+            );
+          await _clearSavedLogin();
+          return;
+        }
+      }
+
+      // For non-admin roles ensure university matches selected
+      final storedUni = (doc['universityId'] ?? '').toString();
+      if (!(_selectedRole == 'Admin') && !(_selectedRole == 'Admin (Global)')) {
+        if (_selectedUniversityId == null ||
+            _selectedUniversityId != storedUni) {
+          if (!isAuto) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Selected university does not match account. Please choose the correct university.',
+                ),
+              ),
+            );
+          }
+          await _clearSavedLogin();
+          return;
+        }
+      }
+
+      // Persist login details including role and university
+      await _saveLogin(
+        roll,
+        password,
+        role: _selectedRole!,
+        universityId: _selectedUniversityId,
+      );
 
       if (!mounted) return;
 
@@ -132,14 +241,13 @@ class _LoginScreenState extends State<LoginScreen>
           MaterialPageRoute(builder: (_) => const AdminPanel()),
         );
       } else if (role == "UniversityAdmin" || role == "University Admin") {
-        final String uniId = (doc['universityId'] is String)
-            ? (doc['universityId'] as String)
-            : doc['universityId'].toString();
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (_) => UniversityAdminPage(
-              universityId: uniId,
+              universityId:
+                  _selectedUniversityId ??
+                  (doc['universityId'] ?? '').toString(),
               ownerRoll: doc['roll'],
             ),
           ),
@@ -168,7 +276,7 @@ class _LoginScreenState extends State<LoginScreen>
           context,
           MaterialPageRoute(
             builder: (_) => CRHomeScreen(
-              universityId: uniId,
+              universityId: _selectedUniversityId ?? uniId,
               departmentId: depId,
               batch: batchId,
               roll: doc['roll'],
@@ -199,7 +307,7 @@ class _LoginScreenState extends State<LoginScreen>
           context,
           MaterialPageRoute(
             builder: (_) => StudentHomeScreen(
-              universityId: uniId,
+              universityId: _selectedUniversityId ?? uniId,
               departmentId: depId,
               batch: batchId,
               role: doc['role'],
@@ -225,16 +333,48 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
-  Future<void> _saveLogin(String roll, String password) async {
+  // Save login credentials and optional role/university for auto-login
+  Future<void> _saveLogin(
+    String roll,
+    String password, {
+    String? role,
+    String? universityId,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('saved_roll', roll);
     await prefs.setString('saved_password', password);
+    if (role != null) await prefs.setString('saved_role', role);
+    if (universityId != null)
+      await prefs.setString('saved_university', universityId);
   }
 
+  // Clear saved credentials (used when login fails)
   Future<void> _clearSavedLogin() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('saved_roll');
     await prefs.remove('saved_password');
+    await prefs.remove('saved_role');
+    await prefs.remove('saved_university');
+  }
+
+  Future<void> _loadUniversities() async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('universities')
+          .orderBy('name')
+          .get();
+      final List<DropdownMenuItem<String>> items = [];
+      for (var doc in snap.docs) {
+        items.add(DropdownMenuItem(value: doc.id, child: Text(doc['name'])));
+      }
+      setState(() {
+        _universityItems = items;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error loading universities: $e")));
+    }
   }
 
   @override
@@ -253,9 +393,11 @@ class _LoginScreenState extends State<LoginScreen>
               children: [
                 // Logo / Icon
                 Container(
-                  height: screenHeight * 0.2,
+                  height: screenHeight * 0.18,
                   alignment: Alignment.center,
                   child: Container(
+                    width: 120,
+                    height: 120,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: const LinearGradient(
@@ -264,21 +406,13 @@ class _LoginScreenState extends State<LoginScreen>
                         end: Alignment.bottomRight,
                       ),
                     ),
-                    child: CircleAvatar(
-                      radius: 60,
-                      backgroundColor: Colors.transparent,
-                      child: const Icon(
-                        Icons.school,
-                        size: 60,
-                        color: Colors.white,
-                      ),
+                    child: const Center(
+                      child: Icon(Icons.school, size: 60, color: Colors.white),
                     ),
                   ),
                 ),
 
-                const SizedBox(height: 30),
-
-                // Welcome text
+                const SizedBox(height: 20),
                 const Text(
                   "Welcome Back!",
                   style: TextStyle(
@@ -293,87 +427,69 @@ class _LoginScreenState extends State<LoginScreen>
                   style: TextStyle(fontSize: 16, color: Colors.black54),
                 ),
 
-                const SizedBox(height: 40),
+                const SizedBox(height: 24),
 
-                // Roll ID TextField
+                // Role selector
+                _buildDropdown<String?>(
+                  value: _selectedRole,
+                  hint: 'Select Role',
+                  items: _roles
+                      .map(
+                        (r) =>
+                            DropdownMenuItem<String?>(value: r, child: Text(r)),
+                      )
+                      .toList(),
+                  onChanged: (v) => setState(() => _selectedRole = v),
+                ),
+
+                const SizedBox(height: 16),
+
+                // University selector for non-admin roles
+                if (_selectedRole != null && _selectedRole != 'Admin')
+                  _buildDropdown<String?>(
+                    value: _selectedUniversityId,
+                    hint: 'Select University',
+                    items: _universityItems,
+                    onChanged: (v) => setState(() => _selectedUniversityId = v),
+                  ),
+
+                const SizedBox(height: 16),
+
+                // Roll ID
                 _buildTextField(
                   controller: rollController,
-                  label: "Roll ID",
+                  label: 'Roll ID',
                   icon: Icons.perm_identity,
                   keyboardType: TextInputType.number,
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
-                // Password TextField
+                // Password
                 _buildTextField(
                   controller: passwordController,
-                  label: "Password",
+                  label: 'Password',
                   icon: Icons.lock,
                   obscureText: true,
                 ),
-                const SizedBox(height: 40),
-
-                // Login button
-                isLoading
-                    ? const CircularProgressIndicator()
-                    : AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                        width: double.infinity,
-                        height: 55,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          gradient: const LinearGradient(
-                            colors: [Colors.deepPurple, Colors.purpleAccent],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.deepPurple.withOpacity(0.4),
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(16),
-                            onTap: loginUser,
-                            splashColor: Colors.white24,
-                            highlightColor: Colors.white10,
-                            child: const Center(
-                              child: Text(
-                                "Login",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-
                 const SizedBox(height: 20),
 
-                // Register link
+                // Login button
+                _buildGradientButton(
+                  text: isLoading ? 'Please wait...' : 'Login',
+                  onPressed: isLoading ? () {} : loginUser,
+                ),
+
+                const SizedBox(height: 12),
                 TextButton(
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                      MaterialPageRoute(builder: (_) => RegisterScreen()),
                     );
                   },
-                  child: const Text(
-                    "Don't have an account? Register",
-                    style: TextStyle(
-                      color: Colors.deepPurple,
-                      fontWeight: FontWeight.w600,
-                      decoration: TextDecoration.underline,
-                    ),
+                  child: Text(
+                    'Don\'t have an account? Register here',
+                    style: TextStyle(color: Colors.deepPurple),
                   ),
                 ),
               ],
@@ -384,7 +500,7 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  // ---------------- TextField builder ----------------
+  // ---------------- TextField builder (same as register theme) ----------------
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
@@ -409,6 +525,81 @@ class _LoginScreenState extends State<LoginScreen>
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+
+  // ---------------- Dropdown builder (same as register theme) ----------------
+  Widget _buildDropdown<T>({
+    required T value,
+    required String hint,
+    required List<DropdownMenuItem<T>> items,
+    required void Function(T?) onChanged,
+  }) {
+    return DropdownButtonFormField<T>(
+      value: value,
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: Colors.white,
+        labelText: hint,
+        labelStyle: const TextStyle(color: Colors.deepPurple),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+      ),
+      items: items,
+      onChanged: onChanged,
+    );
+  }
+
+  // ---------------- Gradient Button (same as register theme) ----------------
+  Widget _buildGradientButton({
+    required String text,
+    required VoidCallback onPressed,
+  }) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      width: double.infinity,
+      height: 55,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: const LinearGradient(
+          colors: [Colors.deepPurple, Colors.purpleAccent],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.deepPurple.withOpacity(0.4),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onPressed,
+          splashColor: Colors.white24,
+          highlightColor: Colors.white10,
+          child: Center(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
         ),
       ),
     );

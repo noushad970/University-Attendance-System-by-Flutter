@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,7 +19,30 @@ class FraudDetectionService {
     try {
       if (Platform.isAndroid) {
         final info = await deviceInfo.androidInfo;
-        id = info.id; // device_info_plus exposes a stable id field
+        // Prefer a known id if available
+        if (info.id.isNotEmpty) {
+          id = info.id;
+        }
+        // Build a fingerprint from multiple build fields and hash it
+        if (id.isEmpty) {
+          final parts = <String>[
+            info.brand,
+            info.model,
+            info.manufacturer,
+            info.device,
+            info.product,
+            info.hardware,
+            info.display,
+            info.board,
+            info.host,
+            info.type,
+            info.isPhysicalDevice.toString(),
+          ];
+          final candidate = parts.where((p) => p.isNotEmpty).join('|');
+          if (candidate.isNotEmpty) {
+            id = _sha256(candidate);
+          }
+        }
       } else if (Platform.isIOS) {
         final info = await deviceInfo.iosInfo;
         id = info.identifierForVendor ?? '';
@@ -29,6 +54,12 @@ class FraudDetectionService {
     }
     await prefs.setString(_deviceIdKey, id);
     return id;
+  }
+
+  static String _sha256(String input) {
+    final bytes = utf8.encode(input);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
   }
 
   static String _randomUuid() {

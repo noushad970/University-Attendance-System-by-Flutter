@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'login_screen.dart';
 import 'subject_details_screen.dart';
 
 class CRHomeScreen extends StatelessWidget {
@@ -127,9 +129,54 @@ class CRHomeScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-        title: const Text("Batch Dashboard"),
         backgroundColor: Colors.deepPurple,
         elevation: 0,
+        title: FutureBuilder<DocumentSnapshot>(
+          future: FirebaseFirestore.instance
+              .collection('universities')
+              .doc(universityId)
+              .get(),
+          builder: (context, snap) {
+            String uniName = 'University';
+            if (snap.hasData && snap.data!.exists) {
+              final data = snap.data!.data();
+              if (data is Map<String, dynamic>) {
+                uniName = (data['name'] as String?) ?? 'University';
+              }
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  uniName,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Text(
+                  'Batch Dashboard',
+                  style: TextStyle(fontSize: 12, color: Colors.white70),
+                ),
+              ],
+            );
+          },
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Logout',
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              try {
+                await FirebaseAuth.instance.signOut();
+              } catch (_) {}
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+            },
+          ),
+        ],
       ),
       body: FutureBuilder<bool>(
         future: isBatchCR(),

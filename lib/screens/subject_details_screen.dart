@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
+import 'package:geolocator/geolocator.dart';
 import '../services/fraud_detection_service.dart';
 import 'fraud_monitoring_screen.dart';
 
@@ -126,6 +127,91 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
   /// 🔹 Start a new attendance session
   Future<void> startAttendance(List<int> rolls) async {
     try {
+      // Prompt CR for start options: radius meters or online/no-location
+      final Map<String, dynamic>?
+      options = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (context) {
+          final TextEditingController radiusCtrl = TextEditingController(
+            text: '20',
+          );
+          bool noLocation = false;
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: const Text('Start Attendance - Options'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(child: Text('Allowed radius (meters):')),
+                        SizedBox(
+                          width: 100,
+                          child: TextField(
+                            controller: radiusCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 10,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: noLocation,
+                          onChanged: (v) =>
+                              setState(() => noLocation = v ?? false),
+                        ),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'No location (online class) - do not collect location or mark cheaters by location',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(null),
+                    child: const Text('Cancel'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      final radiusVal =
+                          int.tryParse(radiusCtrl.text.trim()) ?? 0;
+                      Navigator.of(context).pop({
+                        'noLocation': noLocation,
+                        'radiusMeters': radiusVal,
+                      });
+                    },
+                    child: const Text('Start'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+
+      if (options == null) return; // user cancelled
+
+      final bool noLocation = options['noLocation'] ?? false;
+      final int radiusMeters =
+          (options['radiusMeters'] is int && options['radiusMeters'] > 0)
+          ? options['radiusMeters']
+          : 20;
+
       // Ensure there is no active session already for this subject
       final activeQuery = await FirebaseFirestore.instance
           .collection('universities')
@@ -158,8 +244,23 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
       // If no active session, proceed to create one
       final attendanceMap = {for (var r in rolls) r.toString(): false};
 
-      // Get CR's current location to use as the center
-      final position = await FraudDetectionService.getCurrentLocation();
+      // If noLocation is selected, don't capture CR location
+      Position? position;
+      if (!noLocation) {
+        position = await FraudDetectionService.getCurrentLocation();
+        if (position == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Unable to get current location. Try again or select No location.',
+                ),
+              ),
+            );
+          }
+          return;
+        }
+      }
 
       await FirebaseFirestore.instance
           .collection('universities')
@@ -175,10 +276,25 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
             'date': DateTime.now(),
             'isActive': true,
             'attendance': attendanceMap,
-            // Save center from CR location if available
-            if (position != null) 'crCenterLat': position.latitude,
-            if (position != null) 'crCenterLon': position.longitude,
+            'noLocation': noLocation,
+            'radiusMeters': radiusMeters,
+            // Save center from CR location if available and not an online session
+            if (!noLocation && position != null)
+              'crCenterLat': position.latitude,
+            if (!noLocation && position != null)
+              'crCenterLon': position.longitude,
           });
+
+      // Optionally show confirmation
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Attendance session started ${noLocation ? '(Online)' : '(Radius: ${radiusMeters}m)'}',
+            ),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

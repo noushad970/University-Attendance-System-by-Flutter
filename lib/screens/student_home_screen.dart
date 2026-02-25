@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'login_screen.dart';
 import 'subject_details_screen.dart';
 
 class StudentHomeScreen extends StatefulWidget {
@@ -89,9 +91,39 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     return Scaffold(
       backgroundColor: Colors.deepPurple.shade50,
       appBar: AppBar(
-        title: const Text("My Subjects"),
-        elevation: 0,
         backgroundColor: Colors.deepPurple,
+        elevation: 0,
+        title: FutureBuilder<DocumentSnapshot>(
+          future: FirebaseFirestore.instance
+              .collection('universities')
+              .doc(widget.universityId)
+              .get(),
+          builder: (context, snap) {
+            String uniName = 'University';
+            if (snap.hasData && snap.data!.exists) {
+              final data = snap.data!.data();
+              if (data is Map<String, dynamic>) {
+                uniName = (data['name'] as String?) ?? 'University';
+              }
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  uniName,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Text(
+                  'My Subjects',
+                  style: TextStyle(fontSize: 12, color: Colors.white70),
+                ),
+              ],
+            );
+          },
+        ),
         actions: [
           IconButton(
             tooltip: "Refresh",
@@ -100,6 +132,19 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               setState(() {
                 _refreshTick++;
               });
+            },
+          ),
+          IconButton(
+            tooltip: 'Logout',
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              try {
+                await FirebaseAuth.instance.signOut();
+              } catch (_) {}
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
             },
           ),
         ],
