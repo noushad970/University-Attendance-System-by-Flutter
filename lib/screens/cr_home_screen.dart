@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'login_screen.dart';
 import 'subject_details_screen.dart';
 
@@ -167,6 +168,13 @@ class CRHomeScreen extends StatelessWidget {
             tooltip: 'Logout',
             icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: () async {
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.remove('saved_roll');
+                await prefs.remove('saved_password');
+                await prefs.remove('saved_role');
+                await prefs.remove('saved_university');
+              } catch (_) {}
               try {
                 await FirebaseAuth.instance.signOut();
               } catch (_) {}

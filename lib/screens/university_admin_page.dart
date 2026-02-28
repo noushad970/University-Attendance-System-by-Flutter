@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'login_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class UniversityAdminPage extends StatefulWidget {
   final String universityId;
@@ -291,6 +292,13 @@ class _UniversityAdminPageState extends State<UniversityAdminPage>
             tooltip: 'Logout',
             icon: const Icon(Icons.logout),
             onPressed: () async {
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.remove('saved_roll');
+                await prefs.remove('saved_password');
+                await prefs.remove('saved_role');
+                await prefs.remove('saved_university');
+              } catch (_) {}
               try {
                 await FirebaseAuth.instance.signOut();
               } catch (_) {}

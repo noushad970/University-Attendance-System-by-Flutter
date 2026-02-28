@@ -153,54 +153,59 @@ class _LoginScreenState extends State<LoginScreen>
       final rawRole = doc['role'];
       final role = (rawRole is String) ? rawRole.trim() : rawRole.toString();
       if (_selectedRole == null) {
-        if (!isAuto)
+        if (!isAuto) {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(const SnackBar(content: Text('Please select a role')));
+        }
         return;
       }
       // Normalize checks: Admin may be stored as 'Admin' or 'Admin (Global)'
       if (_selectedRole == 'Admin') {
         if (!(role == 'Admin' || role == 'Admin (Global)')) {
-          if (!isAuto)
+          if (!isAuto) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Selected role does not match account'),
               ),
             );
+          }
           await _clearSavedLogin();
           return;
         }
       } else if (_selectedRole == 'University Admin') {
         if (!(role.toLowerCase().contains('university'))) {
-          if (!isAuto)
+          if (!isAuto) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Selected role does not match account'),
               ),
             );
+          }
           await _clearSavedLogin();
           return;
         }
       } else if (_selectedRole == 'CR') {
         if (role != 'CR') {
-          if (!isAuto)
+          if (!isAuto) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Selected role does not match account'),
               ),
             );
+          }
           await _clearSavedLogin();
           return;
         }
       } else if (_selectedRole == 'Student') {
         if (role != 'Student') {
-          if (!isAuto)
+          if (!isAuto) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Selected role does not match account'),
               ),
             );
+          }
           await _clearSavedLogin();
           return;
         }
@@ -344,8 +349,9 @@ class _LoginScreenState extends State<LoginScreen>
     await prefs.setString('saved_roll', roll);
     await prefs.setString('saved_password', password);
     if (role != null) await prefs.setString('saved_role', role);
-    if (universityId != null)
+    if (universityId != null) {
       await prefs.setString('saved_university', universityId);
+    }
   }
 
   // Clear saved credentials (used when login fails)
@@ -538,7 +544,7 @@ class _LoginScreenState extends State<LoginScreen>
     required void Function(T?) onChanged,
   }) {
     return DropdownButtonFormField<T>(
-      value: value,
+      initialValue: value,
       decoration: InputDecoration(
         filled: true,
         fillColor: Colors.white,
