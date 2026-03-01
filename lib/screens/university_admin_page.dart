@@ -27,9 +27,8 @@ class _UniversityAdminPageState extends State<UniversityAdminPage>
   final TextEditingController extraRollsCtrl = TextEditingController();
   final TextEditingController deptCrRollCtrl = TextEditingController();
 
-  String? selectedBatchIdForDept; // batch to create departments under
-  String?
-  selectedDeptIdForSubject; // department to create subjects under (value format: batchId|deptId)
+  String? selectedBatchIdForDept;
+  String? selectedDeptIdForSubject;
 
   bool isBusy = false;
 
@@ -56,6 +55,7 @@ class _UniversityAdminPageState extends State<UniversityAdminPage>
     _animController.forward();
   }
 
+  //new commit
   @override
   void dispose() {
     batchNameCtrl.dispose();
