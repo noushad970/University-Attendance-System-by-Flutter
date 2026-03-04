@@ -19,11 +19,13 @@ class FraudDetectionService {
     try {
       if (Platform.isAndroid) {
         final info = await deviceInfo.androidInfo;
-        // Prefer a known id if available
-        if (info.id.isNotEmpty) {
-          id = info.id;
+        // Prefer the system-provided id field when available (AndroidDeviceInfo.id)
+        final systemId = info.id;
+        if (systemId.isNotEmpty) {
+          id = systemId;
         }
-        // Build a fingerprint from multiple build fields and hash it
+
+        // If system id is not available, fall back to a hashed fingerprint
         if (id.isEmpty) {
           final parts = <String>[
             info.brand,
