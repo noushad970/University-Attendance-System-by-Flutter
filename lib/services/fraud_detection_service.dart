@@ -19,41 +19,48 @@ class FraudDetectionService {
     try {
       if (Platform.isAndroid) {
         final info = await deviceInfo.androidInfo;
-        // Prefer the system-provided id field when available (AndroidDeviceInfo.id)
-        final systemId = info.id;
-        if (systemId.isNotEmpty) {
-          id = systemId;
+
+        // Try common fields (androidId / id) using dynamic access to support multiple plugin versions
+        try {
+          final androidId = (info as dynamic).androidId as String?;
+          if (androidId != null && androidId.isNotEmpty) id = androidId;
+        } catch (_) {}
+
+        if (id.isEmpty) {
+          try {
+            final infoId = (info as dynamic).id as String?;
+            if (infoId != null && infoId.isNotEmpty) id = infoId;
+          } catch (_) {}
         }
 
-        // If system id is not available, fall back to a hashed fingerprint
+        // If still empty, build a hashed fingerprint from available non-empty fields
         if (id.isEmpty) {
           final parts = <String>[
+            // these fields are provided by device_info_plus and are safe to read
+            info.fingerprint,
             info.brand,
             info.model,
             info.manufacturer,
             info.device,
             info.product,
             info.hardware,
-            info.display,
             info.board,
             info.host,
             info.type,
             info.isPhysicalDevice.toString(),
           ];
-          final candidate = parts.where((p) => p.isNotEmpty).join('|');
-          if (candidate.isNotEmpty) {
-            id = _sha256(candidate);
-          }
+          final joined = parts.where((p) => p.isNotEmpty).join('|');
+          if (joined.isNotEmpty) id = _sha256(joined);
         }
       } else if (Platform.isIOS) {
         final info = await deviceInfo.iosInfo;
         id = info.identifierForVendor ?? '';
       }
-    } catch (_) {}
-
-    if (id.isEmpty) {
-      id = _randomUuid();
+    } catch (_) {
+      // ignore and fall back to generated id
     }
+
+    if (id.isEmpty) id = _randomUuid();
     await prefs.setString(_deviceIdKey, id);
     return id;
   }

@@ -122,6 +122,102 @@ class CRHomeScreen extends StatelessWidget {
     );
   }
 
+  Future<bool> _confirmAndDeleteAccount(BuildContext context) async {
+    final TextEditingController _confirmController = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Account'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'This will permanently delete your account data. To confirm, type "are you sure" below.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _confirmController,
+              decoration: const InputDecoration(
+                hintText: 'Type: are you sure',
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final v = _confirmController.text.trim().toLowerCase();
+              if (v == 'are you sure') {
+                Navigator.pop(ctx, true);
+              } else {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please type "are you sure" to confirm.'),
+                  ),
+                );
+              }
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    return result == true;
+  }
+
+  Future<void> _deleteAccount(BuildContext context) async {
+    final confirmed = await _confirmAndDeleteAccount(context);
+    if (!confirmed) return;
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Deleting account...')));
+    try {
+      // delete user document (doc id is roll as string)
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(roll.toString())
+          .delete();
+
+      // clear saved preferences
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('saved_roll');
+        await prefs.remove('saved_password');
+        await prefs.remove('saved_role');
+        await prefs.remove('saved_university');
+      } catch (_) {}
+
+      // sign out firebase auth if used
+      try {
+        await FirebaseAuth.instance.signOut();
+      } catch (_) {}
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Account deleted')));
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+    }
+  }
+
   /// ==========================
   /// UI
   /// ==========================
@@ -164,6 +260,11 @@ class CRHomeScreen extends StatelessWidget {
           },
         ),
         actions: [
+          IconButton(
+            tooltip: 'Delete Account',
+            icon: const Icon(Icons.delete_forever, color: Colors.white),
+            onPressed: () => _deleteAccount(context),
+          ),
           IconButton(
             tooltip: 'Logout',
             icon: const Icon(Icons.logout, color: Colors.white),

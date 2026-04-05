@@ -38,13 +38,17 @@ dependencies:
   firebase_auth: ^6.1.4
   cloud_firestore: ^6.1.2
   firebase_messaging: ^16.1.1
-  google_sign_in: ^6.1.1
-  geolocator: ^9.0.2
-  device_info_plus: ^9.1.0
+  google_sign_in: ^7.2.0
+  geolocator: ^14.0.2
+  device_info_plus: ^12.4.0
   shared_preferences: ^2.2.2
   google_maps_flutter: ^2.14.2
   pdf: ^3.10.1
   printing: ^5.10.0
+  firebase_storage: ^13.2.0
+  image_picker: ^1.2.1
+  google_mlkit_face_detection: ^0.13.2
+  tflite_flutter: ^0.12.1
 
 dev_dependencies:
   flutter_test:
@@ -56,7 +60,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
-  flutter_launcher_icons: ^0.13.1
+  flutter_launcher_icons: ^0.14.4
 
 
 flutter_icons:
@@ -77,6 +81,7 @@ flutter:
 
   assets:
     - assets/logo.png
+    - assets/models/face_embedding.tflite
 
   # To generate launcher icons automatically using `flutter_launcher_icons`,
   # run:

@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import 'login_screen.dart';
 
 class AdminPanel extends StatefulWidget {
   final String? universityId;
@@ -29,6 +33,135 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     selectedUniversity = widget.universityId;
+  }
+
+  Future<bool> _confirmAndDeleteAccount(BuildContext context) async {
+    final TextEditingController _confirmController = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Account'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'This will permanently delete your account data. To confirm, type "are you sure" below.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _confirmController,
+              decoration: const InputDecoration(
+                hintText: 'Type: are you sure',
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final v = _confirmController.text.trim().toLowerCase();
+              if (v == 'are you sure') {
+                Navigator.pop(ctx, true);
+              } else {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please type "are you sure" to confirm.'),
+                  ),
+                );
+              }
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    return result == true;
+  }
+
+  Future<String?> _resolveCurrentRoll(BuildContext context) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString('saved_roll');
+      if (saved != null && saved.isNotEmpty) return saved;
+    } catch (_) {}
+
+    // If not found, ask the user to input their roll id
+    final TextEditingController _rollController = TextEditingController();
+    final entered = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Enter Roll ID'),
+        content: TextField(
+          controller: _rollController,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(hintText: 'Your Roll ID'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, _rollController.text.trim()),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+
+    if (entered == null || entered.isEmpty) return null;
+    return entered;
+  }
+
+  Future<void> _deleteAccount(BuildContext context) async {
+    final rollId = await _resolveCurrentRoll(context);
+    if (rollId == null) return;
+
+    final confirmed = await _confirmAndDeleteAccount(context);
+    if (!confirmed) return;
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Deleting account...')));
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(rollId).delete();
+
+      // clear saved preferences
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('saved_roll');
+        await prefs.remove('saved_password');
+        await prefs.remove('saved_role');
+        await prefs.remove('saved_university');
+      } catch (_) {}
+
+      try {
+        await FirebaseAuth.instance.signOut();
+      } catch (_) {}
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Account deleted')));
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+    }
   }
 
   /// ==========================
@@ -238,6 +371,33 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
         title: const Text("Admin Panel"),
         backgroundColor: Colors.deepPurple,
         elevation: 0,
+        actions: [
+          IconButton(
+            tooltip: 'Delete Account',
+            icon: const Icon(Icons.delete_forever, color: Colors.white),
+            onPressed: () => _deleteAccount(context),
+          ),
+          IconButton(
+            tooltip: 'Logout',
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: () async {
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.remove('saved_roll');
+                await prefs.remove('saved_password');
+                await prefs.remove('saved_role');
+                await prefs.remove('saved_university');
+              } catch (_) {}
+              try {
+                await FirebaseAuth.instance.signOut();
+              } catch (_) {}
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
