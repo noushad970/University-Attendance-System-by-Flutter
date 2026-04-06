@@ -118,6 +118,113 @@ class _RegisterScreenState extends State<RegisterScreen>
         return;
       }
 
+      // --- Role-specific roll validations ---
+      final int? rollNum = int.tryParse(rollId);
+      if (rollNum == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Roll must be a number")));
+        setState(() => isLoading = false);
+        return;
+      }
+
+      // Dept reference (only used for Student/CR roles) - safe because earlier we required selections
+      final deptRef = FirebaseFirestore.instance
+          .collection('universities')
+          .doc(selectedUniversityId)
+          .collection('batches')
+          .doc(selectedBatchId)
+          .collection('departments')
+          .doc(selectedDepartmentId);
+
+      final deptDoc = await deptRef.get();
+      final crVal = deptDoc.data()?['crRoll'];
+      final int? deptCrRoll = (crVal is int)
+          ? crVal
+          : int.tryParse(crVal?.toString() ?? '');
+
+      // If registering as CR, the entered roll must match department CR
+      if (selectedRole == "CR") {
+        if (deptCrRoll == null || deptCrRoll != rollNum) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "CR roll must match the selected department's CR roll",
+              ),
+            ),
+          );
+          setState(() => isLoading = false);
+          return;
+        }
+      }
+
+      // If registering as Student, prevent CR roll usage and verify roll exists in subjects
+      if (selectedRole == "Student") {
+        if (deptCrRoll != null && deptCrRoll == rollNum) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "This roll is assigned as CR — please select CR as role",
+              ),
+            ),
+          );
+          setState(() => isLoading = false);
+          return;
+        }
+
+        // Verify student roll exists within department subjects (startRoll..endRoll or extraRolls)
+        final subjectsSnap = await deptRef.collection('subjects').get();
+        bool found = false;
+        for (final s in subjectsSnap.docs) {
+          final data = s.data();
+          final start = data['startRoll'];
+          final end = data['endRoll'];
+          final extra = (data['extraRolls'] is List)
+              ? List.from(data['extraRolls'])
+              : null;
+
+          final int? startRoll = (start is int)
+              ? start
+              : int.tryParse(start?.toString() ?? '');
+          final int? endRoll = (end is int)
+              ? end
+              : int.tryParse(end?.toString() ?? '');
+
+          if (startRoll != null &&
+              endRoll != null &&
+              rollNum >= startRoll &&
+              rollNum <= endRoll) {
+            found = true;
+            break;
+          }
+
+          if (extra != null) {
+            for (final e in extra) {
+              final int? ex = (e is int)
+                  ? e
+                  : int.tryParse(e?.toString() ?? '');
+              if (ex == rollNum) {
+                found = true;
+                break;
+              }
+            }
+            if (found) break;
+          }
+        }
+
+        if (!found) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "Invalid roll — not found in this department's student list",
+              ),
+            ),
+          );
+          setState(() => isLoading = false);
+          return;
+        }
+      }
+
       String? createdUniversityId;
 
       // If registering as UniversityAdmin, ensure only one university per owner and create it
@@ -162,7 +269,24 @@ class _RegisterScreenState extends State<RegisterScreen>
           ? (selectedBatchId ?? defaultString)
           : defaultString;
 
-      await FirebaseFirestore.instance.collection('users').doc(rollId).set({
+      // Ensure uniqueness of roll within the same university only
+      final existingQuery = await FirebaseFirestore.instance
+          .collection('users')
+          .where('roll', isEqualTo: int.parse(rollId))
+          .where('universityId', isEqualTo: universityIdToSave)
+          .limit(1)
+          .get();
+      if (existingQuery.docs.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("User already exists in this university"),
+          ),
+        );
+        setState(() => isLoading = false);
+        return;
+      }
+
+      await FirebaseFirestore.instance.collection('users').add({
         'roll': int.parse(rollId),
         'password': passwordController.text.trim(),
         'role': selectedRole,

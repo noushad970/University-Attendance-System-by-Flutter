@@ -124,12 +124,30 @@ class _LoginScreenState extends State<LoginScreen>
     }
 
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(roll)
-          .get();
+      // Find user by roll (and by university when applicable) instead of doc(roll)
+      final int? rollInt = int.tryParse(roll);
+      if (rollInt == null) {
+        if (!isAuto) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Roll must be a number")),
+          );
+        }
+        await _clearSavedLogin();
+        return;
+      }
 
-      if (!doc.exists) {
+      Query query = FirebaseFirestore.instance
+          .collection('users')
+          .where('roll', isEqualTo: rollInt);
+      // For non-admin roles, ensure lookup is scoped to selected university
+      if (!(_selectedRole == 'Admin') && !(_selectedRole == 'Admin (Global)')) {
+        if (_selectedUniversityId != null) {
+          query = query.where('universityId', isEqualTo: _selectedUniversityId);
+        }
+      }
+
+      final querySnap = await query.limit(1).get();
+      if (querySnap.docs.isEmpty) {
         if (!isAuto) {
           ScaffoldMessenger.of(
             context,
@@ -138,6 +156,8 @@ class _LoginScreenState extends State<LoginScreen>
         await _clearSavedLogin();
         return;
       }
+
+      final doc = querySnap.docs.first;
 
       if (doc['password'] != password) {
         if (!isAuto) {
