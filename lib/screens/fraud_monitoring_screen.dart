@@ -119,11 +119,15 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
 
       if (records.isNotEmpty) {
         if (crCenterLat != null && crCenterLon != null) {
+          // Use radius defined in the session if available (in meters), otherwise fallback to 20m
+          final double sessionRadius =
+              (sessionDoc.data()?['radiusMeters'] as num?)?.toDouble() ?? 20.0;
+          print('Using session radiusMeters: $sessionRadius');
           result = FraudDetectionService.detectCheatingWithCenter(
             records,
             crCenterLat,
             crCenterLon,
-            radiusMeters: 20000,
+            radiusMeters: sessionRadius,
           );
         } else {
           result = FraudDetectionService.detectCheating(records);
