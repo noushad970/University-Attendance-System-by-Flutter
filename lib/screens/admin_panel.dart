@@ -36,7 +36,7 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
   }
 
   Future<bool> _confirmAndDeleteAccount(BuildContext context) async {
-    final TextEditingController _confirmController = TextEditingController();
+    final TextEditingController confirmController = TextEditingController();
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -49,7 +49,7 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: _confirmController,
+              controller: confirmController,
               decoration: const InputDecoration(
                 hintText: 'Type: are you sure',
                 border: OutlineInputBorder(),
@@ -68,7 +68,7 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
           ),
           ElevatedButton(
             onPressed: () {
-              final v = _confirmController.text.trim().toLowerCase();
+              final v = confirmController.text.trim().toLowerCase();
               if (v == 'are you sure') {
                 Navigator.pop(ctx, true);
               } else {
@@ -96,13 +96,13 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
     } catch (_) {}
 
     // If not found, ask the user to input their roll id
-    final TextEditingController _rollController = TextEditingController();
+    final TextEditingController rollController = TextEditingController();
     final entered = await showDialog<String?>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Enter Roll ID'),
         content: TextField(
-          controller: _rollController,
+          controller: rollController,
           keyboardType: TextInputType.number,
           decoration: const InputDecoration(hintText: 'Your Roll ID'),
         ),
@@ -112,7 +112,7 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, _rollController.text.trim()),
+            onPressed: () => Navigator.pop(ctx, rollController.text.trim()),
             child: const Text('OK'),
           ),
         ],

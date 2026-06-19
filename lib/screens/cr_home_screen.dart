@@ -317,7 +317,7 @@ class _CRHomeScreenState extends State<CRHomeScreen> {
   }
 
   Future<bool> _confirmAndDeleteAccount(BuildContext context) async {
-    final TextEditingController _confirmController = TextEditingController();
+    final TextEditingController confirmController = TextEditingController();
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -330,7 +330,7 @@ class _CRHomeScreenState extends State<CRHomeScreen> {
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: _confirmController,
+              controller: confirmController,
               decoration: const InputDecoration(
                 hintText: 'Type: are you sure',
                 border: OutlineInputBorder(),
@@ -349,7 +349,7 @@ class _CRHomeScreenState extends State<CRHomeScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              final v = _confirmController.text.trim().toLowerCase();
+              final v = confirmController.text.trim().toLowerCase();
               if (v == 'are you sure') {
                 Navigator.pop(ctx, true);
               } else {

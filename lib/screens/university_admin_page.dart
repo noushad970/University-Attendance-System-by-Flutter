@@ -232,7 +232,7 @@ class _UniversityAdminPageState extends State<UniversityAdminPage>
   }
 
   Future<bool> _confirmAndDeleteAccount(BuildContext context) async {
-    final TextEditingController _confirmController = TextEditingController();
+    final TextEditingController confirmController = TextEditingController();
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -245,7 +245,7 @@ class _UniversityAdminPageState extends State<UniversityAdminPage>
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: _confirmController,
+              controller: confirmController,
               decoration: const InputDecoration(
                 hintText: 'Type: are you sure',
                 border: OutlineInputBorder(),
@@ -264,7 +264,7 @@ class _UniversityAdminPageState extends State<UniversityAdminPage>
           ),
           ElevatedButton(
             onPressed: () {
-              final v = _confirmController.text.trim().toLowerCase();
+              final v = confirmController.text.trim().toLowerCase();
               if (v == 'are you sure') {
                 Navigator.pop(ctx, true);
               } else {
@@ -325,6 +325,8 @@ class _UniversityAdminPageState extends State<UniversityAdminPage>
   @override
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final bool isMobile = screenWidth < 700;
     return Scaffold(
       appBar: AppBar(
         title: StreamBuilder<DocumentSnapshot>(
@@ -454,30 +456,56 @@ class _UniversityAdminPageState extends State<UniversityAdminPage>
                               ],
                             ),
                             const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextField(
-                                    controller: batchNameCtrl,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Batch name',
-                                    ),
+                            isMobile
+                                ? Column(
+                                    children: [
+                                      TextField(
+                                        controller: batchNameCtrl,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Batch name',
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.teal,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 18,
+                                              vertical: 12,
+                                            ),
+                                          ),
+                                          onPressed: _createBatch,
+                                          child: const Text('Create'),
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: batchNameCtrl,
+                                          decoration: const InputDecoration(
+                                            labelText: 'Batch name',
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.teal,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 18,
+                                            vertical: 12,
+                                          ),
+                                        ),
+                                        onPressed: _createBatch,
+                                        child: const Text('Create'),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                const SizedBox(width: 8),
-                                ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.teal,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 18,
-                                      vertical: 12,
-                                    ),
-                                  ),
-                                  onPressed: _createBatch,
-                                  child: const Text('Create'),
-                                ),
-                              ],
-                            ),
                             const SizedBox(height: 12),
                             // Animated list of batches
                             StreamBuilder<QuerySnapshot>(
@@ -572,53 +600,110 @@ class _UniversityAdminPageState extends State<UniversityAdminPage>
                                       ),
                                     )
                                     .toList();
-                                return Row(
-                                  children: [
-                                    Expanded(
-                                      child: DropdownButtonFormField<String>(
-                                        initialValue: selectedBatchIdForDept,
-                                        items: batchItems,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Select Batch',
-                                        ),
-                                        onChanged: (v) => setState(
-                                          () => selectedBatchIdForDept = v,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: TextField(
-                                        controller: deptNameCtrl,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Department name',
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: TextField(
-                                        controller: deptCrRollCtrl,
-                                        keyboardType: TextInputType.number,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Department CR Roll',
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.deepPurple,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 18,
-                                          vertical: 12,
-                                        ),
-                                      ),
-                                      onPressed: _createDepartment,
-                                      child: const Text('Create'),
-                                    ),
-                                  ],
-                                );
+                                return isMobile
+                                    ? Column(
+                                        children: [
+                                          DropdownButtonFormField<String>(
+                                            initialValue:
+                                                selectedBatchIdForDept,
+                                            items: batchItems,
+                                            decoration: const InputDecoration(
+                                              labelText: 'Select Batch',
+                                            ),
+                                            onChanged: (v) => setState(
+                                              () => selectedBatchIdForDept = v,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          TextField(
+                                            controller: deptNameCtrl,
+                                            decoration: const InputDecoration(
+                                              labelText: 'Department name',
+                                            ),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          TextField(
+                                            controller: deptCrRollCtrl,
+                                            keyboardType: TextInputType.number,
+                                            decoration: const InputDecoration(
+                                              labelText: 'Department CR Roll',
+                                            ),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          SizedBox(
+                                            width: double.infinity,
+                                            child: ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor:
+                                                    Colors.deepPurple,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 18,
+                                                      vertical: 12,
+                                                    ),
+                                              ),
+                                              onPressed: _createDepartment,
+                                              child: const Text('Create'),
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    : Row(
+                                        children: [
+                                          Expanded(
+                                            child:
+                                                DropdownButtonFormField<String>(
+                                                  initialValue:
+                                                      selectedBatchIdForDept,
+                                                  items: batchItems,
+                                                  decoration:
+                                                      const InputDecoration(
+                                                        labelText:
+                                                            'Select Batch',
+                                                      ),
+                                                  onChanged: (v) => setState(
+                                                    () =>
+                                                        selectedBatchIdForDept =
+                                                            v,
+                                                  ),
+                                                ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: TextField(
+                                              controller: deptNameCtrl,
+                                              decoration: const InputDecoration(
+                                                labelText: 'Department name',
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: TextField(
+                                              controller: deptCrRollCtrl,
+                                              keyboardType:
+                                                  TextInputType.number,
+                                              decoration: const InputDecoration(
+                                                labelText: 'Department CR Roll',
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          ElevatedButton(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  Colors.deepPurple,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 18,
+                                                    vertical: 12,
+                                                  ),
+                                            ),
+                                            onPressed: _createDepartment,
+                                            child: const Text('Create'),
+                                          ),
+                                        ],
+                                      );
                               },
                             ),
                             const SizedBox(height: 12),
@@ -684,74 +769,142 @@ class _UniversityAdminPageState extends State<UniversityAdminPage>
                             future: _buildDepartmentDropdownItems(),
                             builder: (context, depFuture) {
                               final items = depFuture.data ?? [];
-                              return Row(
-                                children: [
-                                  Expanded(
-                                    child: DropdownButtonFormField<String>(
-                                      initialValue: selectedDeptIdForSubject,
-                                      items: items,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Select Department',
-                                      ),
-                                      onChanged: (v) => setState(
-                                        () => selectedDeptIdForSubject = v,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: TextField(
-                                      controller: subjectNameCtrl,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Subject name',
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              );
+                              return isMobile
+                                  ? Column(
+                                      children: [
+                                        DropdownButtonFormField<String>(
+                                          initialValue:
+                                              selectedDeptIdForSubject,
+                                          items: items,
+                                          decoration: const InputDecoration(
+                                            labelText: 'Select Department',
+                                          ),
+                                          onChanged: (v) => setState(
+                                            () => selectedDeptIdForSubject = v,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        TextField(
+                                          controller: subjectNameCtrl,
+                                          decoration: const InputDecoration(
+                                            labelText: 'Subject name',
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : Row(
+                                      children: [
+                                        Expanded(
+                                          child:
+                                              DropdownButtonFormField<String>(
+                                                initialValue:
+                                                    selectedDeptIdForSubject,
+                                                items: items,
+                                                decoration:
+                                                    const InputDecoration(
+                                                      labelText:
+                                                          'Select Department',
+                                                    ),
+                                                onChanged: (v) => setState(
+                                                  () =>
+                                                      selectedDeptIdForSubject =
+                                                          v,
+                                                ),
+                                              ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: TextField(
+                                            controller: subjectNameCtrl,
+                                            decoration: const InputDecoration(
+                                              labelText: 'Subject name',
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    );
                             },
                           );
                         },
                       ),
                       const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: startRollCtrl,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: 'Start Student ID',
-                              ),
+                      isMobile
+                          ? Column(
+                              children: [
+                                TextField(
+                                  controller: startRollCtrl,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Start Student ID',
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+
+                                TextField(
+                                  controller: endRollCtrl,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'End Student ID',
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+
+                                TextField(
+                                  controller: extraRollsCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText:
+                                        'Extra Student IDs (comma separated)',
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    onPressed: _createSubject,
+                                    child: const Text('Add Subject'),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: startRollCtrl,
+                                    keyboardType: TextInputType.number,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Start Student ID',
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextField(
+                                    controller: endRollCtrl,
+                                    keyboardType: TextInputType.number,
+                                    decoration: const InputDecoration(
+                                      labelText: 'End Student ID',
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextField(
+                                    controller: extraRollsCtrl,
+                                    decoration: const InputDecoration(
+                                      labelText:
+                                          'Extra Student IDs (comma separated)',
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton(
+                                  onPressed: _createSubject,
+                                  child: const Text('Add Subject'),
+                                ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: endRollCtrl,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: 'End Student ID',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: extraRollsCtrl,
-                              decoration: const InputDecoration(
-                                labelText:
-                                    'Extra Student IDs (comma separated)',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton(
-                            onPressed: _createSubject,
-                            child: const Text('Add Subject'),
-                          ),
-                        ],
-                      ),
 
                       const SizedBox(height: 12),
                       if (selectedDeptIdForSubject != null)

@@ -34,7 +34,7 @@ android {
         applicationId = "com.nsdtechnologies.attendancetoday"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        versionCode = 5
+        versionCode = 8
         versionName = flutter.versionName
     }
 
