@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'login_screen.dart';
 import 'subject_details_screen.dart';
+import '../widgets/how_to_use_card.dart';
 
 class StudentHomeScreen extends StatefulWidget {
   final String universityId;
@@ -331,6 +332,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     child: ListView(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       children: [
+                        const HowToUseCard(),
                         if (liveSubjects.isNotEmpty) ...[
                           const Padding(
                             padding: EdgeInsets.fromLTRB(16, 6, 16, 4),

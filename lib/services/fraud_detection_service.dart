@@ -1,85 +1,13 @@
-import 'dart:io';
 import 'dart:math' as math;
-import 'dart:convert';
-import 'package:crypto/crypto.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:device_info_plus/device_info_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+/// Location-only cheating detection.
+///
+/// All device-id / MAC-address based detection has been removed. Cheaters
+/// are now identified purely by their distance from the class center
+/// (or, when no center is provided, by being outliers from the mean of
+/// the submitted positions).
 class FraudDetectionService {
-  static const _deviceIdKey = 'device_id';
-
-  static Future<String> getDeviceId() async {
-    final prefs = await SharedPreferences.getInstance();
-    final existing = prefs.getString(_deviceIdKey);
-    if (existing != null && existing.isNotEmpty) return existing;
-
-    final deviceInfo = DeviceInfoPlugin();
-    String id = '';
-    try {
-      if (Platform.isAndroid) {
-        final info = await deviceInfo.androidInfo;
-
-        // Try common fields (androidId / id) using dynamic access to support multiple plugin versions
-        try {
-          final androidId = (info as dynamic).androidId as String?;
-          if (androidId != null && androidId.isNotEmpty) id = androidId;
-        } catch (_) {}
-
-        if (id.isEmpty) {
-          try {
-            final infoId = (info as dynamic).id as String?;
-            if (infoId != null && infoId.isNotEmpty) id = infoId;
-          } catch (_) {}
-        }
-
-        // If still empty, build a hashed fingerprint from available non-empty fields
-        if (id.isEmpty) {
-          final parts = <String>[
-            // these fields are provided by device_info_plus and are safe to read
-            info.fingerprint,
-            info.brand,
-            info.model,
-            info.manufacturer,
-            info.device,
-            info.product,
-            info.hardware,
-            info.board,
-            info.host,
-            info.type,
-            info.isPhysicalDevice.toString(),
-          ];
-          final joined = parts.where((p) => p.isNotEmpty).join('|');
-          if (joined.isNotEmpty) id = _sha256(joined);
-        }
-      } else if (Platform.isIOS) {
-        final info = await deviceInfo.iosInfo;
-        id = info.identifierForVendor ?? '';
-      }
-    } catch (_) {
-      // ignore and fall back to generated id
-    }
-
-    if (id.isEmpty) id = _randomUuid();
-    await prefs.setString(_deviceIdKey, id);
-    return id;
-  }
-
-  static String _sha256(String input) {
-    final bytes = utf8.encode(input);
-    final digest = sha256.convert(bytes);
-    return digest.toString();
-  }
-
-  static String _randomUuid() {
-    final rand = math.Random.secure();
-    String hex(int length) => List.generate(
-      length,
-      (_) => rand.nextInt(16),
-    ).map((v) => v.toRadixString(16)).join();
-    return '${hex(8)}-${hex(4)}-${hex(4)}-${hex(4)}-${hex(12)}';
-  }
-
   static Future<Position?> getCurrentLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -101,11 +29,11 @@ class FraudDetectionService {
     }
   }
 
-  /// Basic mean-based outlier detection (kept for fallback)
+  /// Basic mean-based outlier detection (kept for fallback when no CR
+  /// center is known — uses the centroid of the submitted positions).
   static CheatDetectionResult detectCheating(List<AttendanceRecord> records) {
     if (records.isEmpty) {
       return CheatDetectionResult(
-        duplicateMacRolls: [],
         outlierLocationRolls: [],
         locationStats: {
           'centerLatitude': 0.0,
@@ -129,7 +57,9 @@ class FraudDetectionService {
     );
   }
 
-  /// Advanced detection using CR-defined center radius and duplicate device IDs
+  /// Location-only detection using a CR-defined center and radius.
+  /// Any student whose position is farther than [radiusMeters] from the
+  /// center is flagged as a possible cheater.
   static CheatDetectionResult detectCheatingWithCenter(
     List<AttendanceRecord> records,
     double centerLat,
@@ -153,21 +83,7 @@ class FraudDetectionService {
       if (d > radiusMeters) outliers.add(roll);
     });
 
-    // Duplicate device IDs
-    final deviceMap = <String, List<int>>{};
-    for (final r in records) {
-      if (r.deviceId.isNotEmpty) {
-        deviceMap.putIfAbsent(r.deviceId, () => []).add(r.roll);
-      }
-    }
-    final duplicateDeviceRolls = <int>[];
-    for (final rolls in deviceMap.values) {
-      if (rolls.length > 1) duplicateDeviceRolls.addAll(rolls);
-    }
-
     return CheatDetectionResult(
-      // reuse duplicateMacRolls field to carry duplicate device ID rolls
-      duplicateMacRolls: duplicateDeviceRolls,
       outlierLocationRolls: outliers,
       locationStats: {
         'centerLatitude': centerLat,
@@ -221,23 +137,17 @@ class AttendanceRecord {
   final int roll;
   final double latitude;
   final double longitude;
-  final String deviceId;
-  final DateTime timestamp;
   AttendanceRecord({
     required this.roll,
     required this.latitude,
     required this.longitude,
-    required this.deviceId,
-    required this.timestamp,
   });
 }
 
 class CheatDetectionResult {
-  final List<int> duplicateMacRolls; // holds duplicate device IDs
   final List<int> outlierLocationRolls;
   final Map<String, dynamic> locationStats;
   CheatDetectionResult({
-    required this.duplicateMacRolls,
     required this.outlierLocationRolls,
     required this.locationStats,
   });

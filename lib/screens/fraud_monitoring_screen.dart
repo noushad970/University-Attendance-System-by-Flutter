@@ -69,7 +69,6 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
       allLocationData = <int, Map<String, dynamic>>{};
 
       final records = <AttendanceRecord>[];
-      final deviceMap = <String, List<int>>{};
 
       for (final roll in attendanceData.keys) {
         final isPresent = attendanceData[roll] ?? false;
@@ -82,11 +81,6 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
               locData,
             );
 
-            final deviceId = locData['deviceId'];
-            if (deviceId is String && deviceId.isNotEmpty) {
-              deviceMap.putIfAbsent(deviceId, () => []).add(int.parse(roll));
-            }
-
             final lat = locData['latitude'];
             final lon = locData['longitude'];
             if (lat is num && lon is num) {
@@ -95,10 +89,6 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
                   roll: int.parse(roll),
                   latitude: lat.toDouble(),
                   longitude: lon.toDouble(),
-                  deviceId: deviceId is String ? deviceId : '',
-                  timestamp: (locData['timestamp'] is Timestamp)
-                      ? (locData['timestamp'] as Timestamp).toDate()
-                      : DateTime.now(),
                 ),
               );
             }
@@ -107,13 +97,6 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
       }
 
       print('Records collected: ${records.length}');
-
-      final duplicateDevices = <int>[];
-      for (final rolls in deviceMap.values) {
-        if (rolls.length > 1) {
-          duplicateDevices.addAll(rolls);
-        }
-      }
 
       CheatDetectionResult? result;
 
@@ -132,18 +115,8 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
         } else {
           result = FraudDetectionService.detectCheating(records);
         }
-        // merge duplicate device detection
-        result = CheatDetectionResult(
-          duplicateMacRolls: <int>{
-            ...result.duplicateMacRolls,
-            ...duplicateDevices,
-          }.toList(),
-          outlierLocationRolls: result.outlierLocationRolls,
-          locationStats: result.locationStats,
-        );
       } else {
         result = CheatDetectionResult(
-          duplicateMacRolls: duplicateDevices,
           outlierLocationRolls: [],
           locationStats: {
             'centerLatitude': crCenterLat ?? 0.0,
@@ -166,7 +139,6 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
       if (mounted) {
         setState(() {
           detectionResult = CheatDetectionResult(
-            duplicateMacRolls: [],
             outlierLocationRolls: [],
             locationStats: {
               'centerLatitude': 0.0,
@@ -226,9 +198,8 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
         updatedAttendance[studentRoll.toString()] = false;
       }
 
-      // Get all cheaters
+      // Get all cheaters (location-based only)
       final allCheaters = <int>{
-        ...?detectionResult?.duplicateMacRolls,
         ...?detectionResult?.outlierLocationRolls,
         ...manuallyRemovedStudents,
       }.toList();
@@ -286,7 +257,7 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
               ),
             )
           : DefaultTabController(
-              length: 3,
+              length: 2,
               child: Column(
                 children: [
                   /// TAB BAR
@@ -294,7 +265,6 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
                     tabs: [
                       Tab(text: "📊 Scatter Plot"),
                       Tab(text: "🚨 Cheaters List"),
-                      Tab(text: "📱 MAC Address"),
                     ],
                   ),
 
@@ -307,9 +277,6 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
 
                         /// CHEATERS LIST TAB
                         _buildCheatersList(),
-
-                        /// MAC ADDRESS TAB
-                        _buildMacAddressTab(),
                       ],
                     ),
                   ),
@@ -404,7 +371,6 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
   }
 
   Widget _buildCheatersList() {
-    final duplicateMacCheaters = detectionResult?.duplicateMacRolls ?? [];
     final locationCheaters = detectionResult?.outlierLocationRolls ?? [];
     final allStudentData =
         detectionResult?.locationStats['allDistances'] as Map<int, double>? ??
@@ -413,30 +379,6 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
     return SingleChildScrollView(
       child: Column(
         children: [
-          /// DUPLICATE MAC SECTION
-          if (duplicateMacCheaters.isNotEmpty)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  color: Colors.red.shade100,
-                  child: const Text(
-                    "🚨 Same Device (MAC Address) - DEFINITE CHEATERS",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red,
-                    ),
-                  ),
-                ),
-                ...duplicateMacCheaters.map(
-                  (roll) =>
-                      _buildStudentCard(roll, 'MAC Address Match', Colors.red),
-                ),
-              ],
-            ),
-
           /// LOCATION OUTLIERS SECTION
           if (locationCheaters.isNotEmpty)
             Column(
@@ -465,7 +407,7 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
               ],
             ),
 
-          if (duplicateMacCheaters.isEmpty && locationCheaters.isEmpty)
+          if (locationCheaters.isEmpty)
             const Padding(
               padding: EdgeInsets.all(16),
               child: Text(
@@ -534,141 +476,6 @@ class _FraudMonitoringScreenState extends State<FraudMonitoringScreen> {
                 icon: const Icon(Icons.remove_circle),
                 label: const Text("Remove"),
               ),
-      ),
-    );
-  }
-
-  Widget _buildMacAddressTab() {
-    if (allLocationData.isEmpty) {
-      return const Center(child: Text("No location/device data available"));
-    }
-
-    final sortedRolls = allLocationData.keys.toList()..sort();
-
-    return SingleChildScrollView(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          columns: const [
-            DataColumn(
-              label: Text(
-                "Student ID",
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                "Device ID",
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                "Latitude",
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                "Longitude",
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                "Distance",
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                "Status",
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-          rows: sortedRolls.map((roll) {
-            final locData = allLocationData[roll];
-            final distance =
-                detectionResult?.locationStats['allDistances'][roll];
-            final latValue = locData?['latitude'];
-            final lonValue = locData?['longitude'];
-            final isDuplicateDevice =
-                detectionResult?.duplicateMacRolls.contains(roll) ?? false;
-            final isOutlier =
-                detectionResult?.outlierLocationRolls.contains(roll) ?? false;
-
-            String status = "✅ OK";
-            Color statusColor = Colors.green;
-
-            if (isDuplicateDevice) {
-              status = "🚨 Duplicate Device";
-              statusColor = Colors.red;
-            } else if (isOutlier) {
-              status = "⚠️ Outlier Location";
-              statusColor = Colors.orange;
-            }
-
-            return DataRow(
-              cells: [
-                DataCell(Text(roll.toString())),
-                DataCell(
-                  Container(
-                    constraints: const BoxConstraints(maxWidth: 200),
-                    child: Text(
-                      locData?['deviceId'] ?? 'UNKNOWN',
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                ),
-                DataCell(
-                  Text(
-                    latValue is num
-                        ? latValue.toDouble().toStringAsFixed(6)
-                        : '-',
-                  ),
-                ),
-                DataCell(
-                  Text(
-                    lonValue is num
-                        ? lonValue.toDouble().toStringAsFixed(6)
-                        : '-',
-                  ),
-                ),
-                DataCell(
-                  Text(
-                    distance is num ? '${distance.toStringAsFixed(2)}m' : '-',
-                  ),
-                ),
-                DataCell(
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.2),
-                      border: Border.all(color: statusColor),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      status,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: statusColor,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          }).toList(),
-        ),
       ),
     );
   }

@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+3
+version: 1.0.4+11
 
 environment:
   sdk: ^3.10.7
@@ -33,26 +33,25 @@ dependencies:
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
-  firebase_core: ^4.4.0
-  firebase_auth: ^6.1.4
+  firebase_core: ^4.0.0
   cloud_firestore: ^6.1.2
+  firebase_auth: ^6.0.0
+  firebase_storage: ^13.0.6  
+  cupertino_icons: ^1.0.8
   firebase_messaging: ^16.1.1
-  google_sign_in: ^7.2.0
-  geolocator: ^14.0.2
-  device_info_plus: ^12.4.0
+  google_sign_in: ^6.1.1
+  geolocator: ^9.0.2
+  device_info_plus: ^9.1.0
   shared_preferences: ^2.2.2
   google_maps_flutter: ^2.14.2
   pdf: ^3.10.1
   printing: ^5.10.0
-  firebase_storage: ^13.2.0
-  image_picker: ^1.2.1
-  google_mlkit_face_detection: ^0.13.2
-  tflite_flutter: ^0.12.1
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -60,7 +59,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
-  flutter_launcher_icons: ^0.14.4
+  flutter_launcher_icons: ^0.13.1
 
 
 flutter_icons:
@@ -81,7 +80,6 @@ flutter:
 
   assets:
     - assets/logo.png
-    - assets/models/face_embedding.tflite
 
   # To generate launcher icons automatically using `flutter_launcher_icons`,
   # run:

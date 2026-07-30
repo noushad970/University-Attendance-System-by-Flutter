@@ -323,14 +323,10 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
   /// 🔹 Update attendance (Student & CR)
   Future<void> updateAttendance(String sessionId, int roll, bool value) async {
     try {
-      // Persist deviceId and user location with the attendance
-      final deviceId = await FraudDetectionService.getDeviceId();
+      // Persist user location with the attendance (no device-id tracking).
       final position = await FraudDetectionService.getCurrentLocation();
 
-      final Map<String, dynamic> locPayload = {
-        'deviceId': deviceId,
-        'timestamp': Timestamp.now(),
-      };
+      final Map<String, dynamic> locPayload = {'timestamp': Timestamp.now()};
       if (position != null) {
         locPayload['latitude'] = position.latitude;
         locPayload['longitude'] = position.longitude;
@@ -370,7 +366,7 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
     }
   }
 
-  /// 🔹 Detect cheating for a session
+  /// 🔹 Detect cheating for a session (location only)
   Future<CheatDetectionResult?> detectCheatingInSession(
     String sessionId,
   ) async {
@@ -391,16 +387,11 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
       final locationData = sessionDoc['locationData'] ?? {};
       final attendanceData = sessionDoc['attendance'] ?? {};
       final records = <AttendanceRecord>[];
-      final macMap = <String, List<int>>{};
 
       for (final roll in attendanceData.keys) {
         final isPresent = attendanceData[roll] ?? false;
         if (isPresent && locationData.containsKey(roll)) {
           final loc = locationData[roll];
-          final mac = loc['macAddress'];
-          if (mac is String && mac.isNotEmpty) {
-            macMap.putIfAbsent(mac, () => []).add(int.parse(roll));
-          }
           final lat = loc['latitude'];
           final lon = loc['longitude'];
           if (lat is num && lon is num) {
@@ -409,26 +400,14 @@ class _SubjectDetailsScreenState extends State<SubjectDetailsScreen> {
                 roll: int.parse(roll),
                 latitude: lat.toDouble(),
                 longitude: lon.toDouble(),
-                deviceId: mac ?? 'UNKNOWN',
-                timestamp: loc['timestamp']?.toDate() ?? DateTime.now(),
               ),
             );
           }
         }
       }
 
-      final duplicateMacs = <int>[];
-      for (var rolls in macMap.values) {
-        if (rolls.length > 1) duplicateMacs.addAll(rolls);
-      }
-
-      if (records.isEmpty && duplicateMacs.isEmpty) return null;
-      final result = FraudDetectionService.detectCheating(records);
-      return CheatDetectionResult(
-        duplicateMacRolls: [...duplicateMacs, ...result.duplicateMacRolls],
-        outlierLocationRolls: result.outlierLocationRolls,
-        locationStats: result.locationStats,
-      );
+      if (records.isEmpty) return null;
+      return FraudDetectionService.detectCheating(records);
     } catch (e) {
       return null;
     }
